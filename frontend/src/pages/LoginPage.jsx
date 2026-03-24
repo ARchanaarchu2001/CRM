@@ -24,9 +24,13 @@ const LoginPage = () => {
           // Future scalable role-based redirect placeholder logic
           const userRole = userData?.user?.role || role;
           if (userRole === 'super_admin') {
-            navigate('/admin-dash');
+            navigate('/analyst-dash');
+          } else if (userRole === 'data_analyst') {
+            navigate('/analyst-dash');
           } else if (userRole === 'manager') {
             navigate('/manager-dash');
+          } else if (userRole === 'agent') {
+            navigate('/agent-dash');
           } else {
             navigate('/dashboard');
           }

@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -5,9 +6,27 @@ import cookieParser from 'cookie-parser';
 import rateLimit from 'express-rate-limit';
 import { notFound, errorHandler } from './middleware/errorMiddleware.js';
 import authRoutes from './routes/authRoutes.js';
+import leadRoutes from './routes/leadRoutes.js';
 import userRoutes from './routes/userRoutes.js';
 
 const app = express();
+
+const defaultAllowedOrigins = [
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+  'http://localhost:5174',
+  'http://127.0.0.1:5174',
+  'http://localhost:4173',
+  'http://127.0.0.1:4173',
+];
+
+const allowedOrigins = [
+  ...defaultAllowedOrigins,
+  ...(process.env.FRONTEND_URL || '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean),
+];
 
 
 // Security Middlewares
@@ -16,7 +35,14 @@ app.use(helmet());
 // CORS Configuration
 app.use(
   cors({
-    origin: ['http://localhost:5173', 'http://localhost:5174'],
+    origin: (origin, callback) => {
+      // Allow server-to-server requests and local dev origins we know about.
+      if (!origin || allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+
+      return callback(new Error(`CORS blocked for origin: ${origin}`));
+    },
     credentials: true,
   })
 );
@@ -43,6 +69,7 @@ app.get('/api/health', (req, res) => {
 
 // Define core business routes here
 app.use('/api/auth', authRoutes);
+app.use('/api/leads', leadRoutes);
 app.use('/api/users', userRoutes);
 
 // Error Handling Middleware
