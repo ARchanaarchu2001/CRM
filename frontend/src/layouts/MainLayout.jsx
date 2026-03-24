@@ -1,5 +1,5 @@
 import React from 'react';
-import { Outlet, useNavigate } from 'react-router-dom';
+import { Link, Outlet, useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { logoutUser } from '../features/auth/authSlice.js';
 
@@ -13,29 +13,56 @@ const MainLayout = () => {
     navigate('/login');
   };
 
+  const links = [
+    { to: '/dashboard', label: 'Home', show: true },
+    { to: '/analyst-dash', label: 'Analyst Workspace', show: ['data_analyst', 'super_admin'].includes(role) },
+    { to: '/agent-dash', label: 'Agent Board', show: ['agent', 'super_admin'].includes(role) },
+    { to: '/manager-dash', label: 'Manager', show: ['manager', 'super_admin'].includes(role) },
+    { to: '/team-lead-dash', label: 'Team Lead', show: ['team_lead', 'manager', 'super_admin'].includes(role) },
+  ];
+
   return (
-    <div className="min-h-screen bg-gray-100 flex flex-col">
-      <header className="bg-white shadow">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
-          <h1 className="text-xl font-bold text-gray-900">MERN Auth System</h1>
-          <div className="flex items-center space-x-4">
+    <div className="min-h-screen bg-slate-100 flex flex-col">
+      <header className="border-b border-slate-200 bg-white">
+        <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-4 sm:px-6 lg:px-8">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <h1 className="text-xl font-bold text-slate-900">Lead Distribution Workspace</h1>
+              <p className="text-sm text-slate-500">Upload, assign, and track cold-calling lead activity.</p>
+            </div>
+            <div className="flex items-center space-x-4">
             {user && (
-              <span className="text-sm text-gray-600">
+                <span className="text-sm text-slate-600">
                 Logged in as <strong>{user.email}</strong> ({role})
               </span>
             )}
             <button
               onClick={handleLogout}
-              className="rounded bg-red-600 px-4 py-2 text-sm text-white hover:bg-red-700 transition"
+                className="rounded-xl bg-red-600 px-4 py-2 text-sm text-white hover:bg-red-700 transition"
             >
               Logout
             </button>
           </div>
+          </div>
+
+          <nav className="flex flex-wrap gap-2">
+            {links
+              .filter((link) => link.show)
+              .map((link) => (
+                <Link
+                  key={link.to}
+                  to={link.to}
+                  className="rounded-full bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200"
+                >
+                  {link.label}
+                </Link>
+              ))}
+          </nav>
         </div>
       </header>
       
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8">
-        <div className="bg-white p-6 rounded-xl shadow-lg min-h-full border border-gray-100">
+        <div className="min-h-full">
           <Outlet />
         </div>
       </main>
