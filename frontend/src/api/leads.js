@@ -49,6 +49,11 @@ export const fetchAnalystLeads = async (params) => {
   return response.data;
 };
 
+export const fetchAnalystBatches = async (params) => {
+  const response = await axiosPrivate.get('/leads/analyst/batches', { params });
+  return response.data;
+};
+
 export const assignLeads = async (payload) => {
   const response = await axiosPrivate.post('/leads/assign', payload);
   return response.data;
@@ -56,6 +61,16 @@ export const assignLeads = async (payload) => {
 
 export const fetchMyAssignments = async (params) => {
   const response = await axiosPrivate.get('/leads/assignments/mine', { params });
+  return response.data;
+};
+
+export const fetchMyAssignmentBatches = async () => {
+  const response = await axiosPrivate.get('/leads/assignments/batches');
+  return response.data;
+};
+
+export const hideAssignmentBatch = async (importBatchId) => {
+  const response = await axiosPrivate.put(`/leads/assignments/batches/${importBatchId}/hide`);
   return response.data;
 };
 

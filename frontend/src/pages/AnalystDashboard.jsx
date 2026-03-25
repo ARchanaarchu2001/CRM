@@ -1,6 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { assignLeads, fetchAnalystLeads, fetchLeadMetadata, importLeadFile, previewLeadFile } from '../api/leads.js';
+import {
+  fetchAnalystBatches,
+  fetchLeadMetadata,
+  importLeadFile,
+  previewLeadFile,
+} from '../api/leads.js';
 
 const createAddedColumn = () => ({
   id: `column-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -10,17 +15,8 @@ const createAddedColumn = () => ({
 
 const AnalystDashboard = () => {
   const [products, setProducts] = useState(['mnp', 'p2p', 'fne', 'plus', 'general']);
-  const [agents, setAgents] = useState([]);
   const [selectedProduct, setSelectedProduct] = useState('p2p');
-  const [leadFilters, setLeadFilters] = useState({
-    product: '',
-    duplicateStatus: '',
-    assignmentStatus: '',
-    search: '',
-  });
-  const [leads, setLeads] = useState([]);
-  const [selectedLeadIds, setSelectedLeadIds] = useState([]);
-  const [assignAgentId, setAssignAgentId] = useState('');
+  const [batches, setBatches] = useState([]);
   const [actionMessage, setActionMessage] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [uploadState, setUploadState] = useState({
@@ -36,21 +32,19 @@ const AnalystDashboard = () => {
   const loadMetadata = async () => {
     const data = await fetchLeadMetadata();
     setProducts(data.products || []);
-    setAgents(data.agents || []);
     setSelectedProduct((current) => current || data.products?.[0] || 'p2p');
-    setAssignAgentId((current) => current || data.agents?.[0]?._id || '');
   };
 
-  const loadLeads = async (filters = leadFilters) => {
-    const response = await fetchAnalystLeads(filters);
-    setLeads(response.leads || []);
+  const loadBatches = async (product = '') => {
+    const response = await fetchAnalystBatches(product ? { product } : undefined);
+    setBatches(response.batches || []);
   };
 
   useEffect(() => {
     const initialize = async () => {
       try {
         await loadMetadata();
-        await loadLeads();
+        await loadBatches();
       } finally {
         setIsLoading(false);
       }
@@ -58,16 +52,6 @@ const AnalystDashboard = () => {
 
     initialize();
   }, []);
-
-  const previewColumns = useMemo(() => {
-    const keys = new Set();
-    leads.slice(0, 10).forEach((lead) => {
-      Object.keys(lead.rawData || {})
-        .slice(0, 6)
-        .forEach((key) => keys.add(key));
-    });
-    return Array.from(keys).slice(0, 6);
-  }, [leads]);
 
   const visiblePreviewHeaders = useMemo(() => {
     const previewHeaders = uploadState.preview?.headers || [];
@@ -94,12 +78,6 @@ const AnalystDashboard = () => {
       return nextRow;
     });
   }, [uploadState.preview, visiblePreviewHeaders, uploadState.addedColumns]);
-
-  const toggleLead = (leadId) => {
-    setSelectedLeadIds((current) =>
-      current.includes(leadId) ? current.filter((id) => id !== leadId) : [...current, leadId]
-    );
-  };
 
   const handlePreview = async (event) => {
     event.preventDefault();
@@ -154,40 +132,16 @@ const AnalystDashboard = () => {
         preview: null,
         removedColumns: [],
         addedColumns: [],
-        status: `${response.summary.totalRows} leads imported. Contact column: ${response.detectedContactColumn}`,
+        status: `${response.summary.totalRows} leads imported into ${response.importBatch.batchName}.`,
       });
       setActionMessage('Import completed successfully.');
       await loadMetadata();
-      await loadLeads();
+      await loadBatches(selectedProduct);
     } catch (error) {
       setUploadState((current) => ({
         ...current,
         status: error.response?.data?.message || 'Lead import failed',
       }));
-    }
-  };
-
-  const handleFilterSubmit = async (event) => {
-    event.preventDefault();
-    await loadLeads(leadFilters);
-  };
-
-  const handleAssign = async () => {
-    if (!selectedLeadIds.length || !assignAgentId) {
-      setActionMessage('Choose leads and one agent before assigning.');
-      return;
-    }
-
-    try {
-      const response = await assignLeads({
-        leadIds: selectedLeadIds,
-        agentId: assignAgentId,
-      });
-      setActionMessage(response.message);
-      setSelectedLeadIds([]);
-      await loadLeads();
-    } catch (error) {
-      setActionMessage(error.response?.data?.message || 'Could not assign leads');
     }
   };
 
@@ -234,7 +188,7 @@ const AnalystDashboard = () => {
           <div>
             <h2 className="text-xl font-semibold text-slate-900">Lead Upload</h2>
             <p className="mt-2 text-sm text-slate-600">
-              Upload first, preview the detected contact column, remove unwanted columns, add custom columns, then import.
+              Upload a file, name the batch, preview the contact column, then import it as a tracked batch.
             </p>
           </div>
           <Link
@@ -279,7 +233,7 @@ const AnalystDashboard = () => {
           </label>
 
           <label className="text-sm font-medium text-slate-700">
-            Import name
+            Batch name
             <input
               type="text"
               value={uploadState.batchName}
@@ -324,7 +278,7 @@ const AnalystDashboard = () => {
 
         {uploadState.preview && (
           <div className="mt-6 space-y-6 rounded-2xl bg-slate-50 p-5">
-            <div className="grid gap-4 lg:grid-cols-3">
+            <div className="grid gap-4 lg:grid-cols-4">
               <div className="rounded-xl bg-white p-4 shadow-sm">
                 <div className="text-xs uppercase tracking-wide text-slate-500">Detected contact column</div>
                 <div className="mt-2 font-semibold text-slate-900">
@@ -336,6 +290,10 @@ const AnalystDashboard = () => {
                 <div className="mt-2 font-semibold text-slate-900">{uploadState.preview.totalRows}</div>
               </div>
               <div className="rounded-xl bg-white p-4 shadow-sm">
+                <div className="text-xs uppercase tracking-wide text-slate-500">Batch name</div>
+                <div className="mt-2 font-semibold text-slate-900">{uploadState.batchName || 'Pending'}</div>
+              </div>
+              <div className="rounded-xl bg-white p-4 shadow-sm">
                 <div className="text-xs uppercase tracking-wide text-slate-500">File</div>
                 <div className="mt-2 font-semibold text-slate-900">{uploadState.preview.fileName}</div>
               </div>
@@ -344,9 +302,6 @@ const AnalystDashboard = () => {
             <div className="grid gap-6 lg:grid-cols-2">
               <section className="rounded-2xl bg-white p-5 shadow-sm">
                 <h3 className="text-lg font-semibold text-slate-900">Remove Uploaded Columns</h3>
-                <p className="mt-2 text-sm text-slate-600">
-                  Uncheck nothing. Select columns you want to remove before import. The contact column should stay.
-                </p>
                 <div className="mt-4 grid gap-2 sm:grid-cols-2">
                   {uploadState.preview.headers.map((header) => {
                     const isContactColumn = header === uploadState.contactColumn;
@@ -372,9 +327,7 @@ const AnalystDashboard = () => {
                 <div className="flex items-center justify-between gap-4">
                   <div>
                     <h3 className="text-lg font-semibold text-slate-900">Add Custom Columns</h3>
-                    <p className="mt-2 text-sm text-slate-600">
-                      Add new columns such as `Language`, `Priority`, or `Source Team`.
-                    </p>
+                    <p className="mt-2 text-sm text-slate-600">Add new columns before import if this batch needs extra fields.</p>
                   </div>
                   <button
                     type="button"
@@ -402,7 +355,7 @@ const AnalystDashboard = () => {
                         type="text"
                         value={column.defaultValue}
                         onChange={(event) => updateAddedColumn(index, 'defaultValue', event.target.value)}
-                        placeholder="Default value for all imported rows"
+                        placeholder="Default value"
                         className="rounded-xl border border-slate-300 px-3 py-2"
                       />
                       <button
@@ -422,16 +375,14 @@ const AnalystDashboard = () => {
               <div className="flex flex-wrap items-center justify-between gap-4">
                 <div>
                   <h3 className="text-lg font-semibold text-slate-900">Preview After Column Changes</h3>
-                  <p className="mt-2 text-sm text-slate-600">
-                    This is how the first rows will look after your remove/add changes.
-                  </p>
+                  <p className="mt-2 text-sm text-slate-600">This preview matches the batch sheet that will be stored after import.</p>
                 </div>
                 <button
                   type="button"
                   onClick={handleImport}
                   className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700"
                 >
-                  Import Edited Leads
+                  Import Batch
                 </button>
               </div>
 
@@ -465,143 +416,63 @@ const AnalystDashboard = () => {
       </section>
 
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="flex flex-wrap items-end gap-4">
-          <form onSubmit={handleFilterSubmit} className="flex flex-1 flex-wrap items-end gap-3">
-            <label className="text-sm font-medium text-slate-700">
-              Product
-              <select
-                value={leadFilters.product}
-                onChange={(event) => setLeadFilters((current) => ({ ...current, product: event.target.value }))}
-                className="mt-1 rounded-xl border border-slate-300 px-3 py-2"
-              >
-                <option value="">All</option>
-                {products.map((product) => (
-                  <option key={product} value={product}>
-                    {product.toUpperCase()}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="text-sm font-medium text-slate-700">
-              Duplicate
-              <select
-                value={leadFilters.duplicateStatus}
-                onChange={(event) =>
-                  setLeadFilters((current) => ({ ...current, duplicateStatus: event.target.value }))
-                }
-                className="mt-1 rounded-xl border border-slate-300 px-3 py-2"
-              >
-                <option value="">All</option>
-                <option value="unique">Unique</option>
-                <option value="duplicate_in_file">Duplicate in file</option>
-                <option value="duplicate_in_system">Duplicate in system</option>
-                <option value="duplicate_in_file_and_system">Duplicate in both</option>
-              </select>
-            </label>
-
-            <label className="text-sm font-medium text-slate-700">
-              Assignment
-              <select
-                value={leadFilters.assignmentStatus}
-                onChange={(event) =>
-                  setLeadFilters((current) => ({ ...current, assignmentStatus: event.target.value }))
-                }
-                className="mt-1 rounded-xl border border-slate-300 px-3 py-2"
-              >
-                <option value="">All</option>
-                <option value="unassigned">Unassigned</option>
-                <option value="assigned">Assigned</option>
-              </select>
-            </label>
-
-            <label className="min-w-[220px] flex-1 text-sm font-medium text-slate-700">
-              Search
-              <input
-                type="text"
-                value={leadFilters.search}
-                onChange={(event) => setLeadFilters((current) => ({ ...current, search: event.target.value }))}
-                placeholder="Search contact or name"
-                className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2"
-              />
-            </label>
-
-            <button
-              type="submit"
-              className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
-            >
-              Apply Filters
-            </button>
-          </form>
-
-          <div className="flex items-end gap-3">
-            <label className="text-sm font-medium text-slate-700">
-              Assign to agent
-              <select
-                value={assignAgentId}
-                onChange={(event) => setAssignAgentId(event.target.value)}
-                className="mt-1 rounded-xl border border-slate-300 px-3 py-2"
-              >
-                <option value="">Select agent</option>
-                {agents.map((agent) => (
-                  <option key={agent._id} value={agent._id}>
-                    {agent.fullName}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <button
-              type="button"
-              onClick={handleAssign}
-              className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
-            >
-              Assign Selected
-            </button>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-xl font-semibold text-slate-900">Datasets</h2>
+            <p className="mt-2 text-sm text-slate-600">
+              Open a dataset to view its sheet. Duplicate counts only appear on the card if that dataset actually has duplicates.
+            </p>
           </div>
         </div>
 
         {actionMessage && <p className="mt-4 text-sm text-slate-600">{actionMessage}</p>}
 
-        <div className="mt-6 overflow-x-auto">
-          <table className="min-w-full divide-y divide-slate-200 text-sm">
-            <thead className="bg-slate-50">
-              <tr>
-                <th className="px-3 py-3 text-left font-semibold text-slate-700">Pick</th>
-                <th className="px-3 py-3 text-left font-semibold text-slate-700">Contact</th>
-                <th className="px-3 py-3 text-left font-semibold text-slate-700">Product</th>
-                <th className="px-3 py-3 text-left font-semibold text-slate-700">Duplicate</th>
-                <th className="px-3 py-3 text-left font-semibold text-slate-700">Assigned</th>
-                {previewColumns.map((column) => (
-                  <th key={column} className="px-3 py-3 text-left font-semibold text-slate-700">
-                    {column}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 bg-white">
-              {leads.map((lead) => (
-                <tr key={lead._id}>
-                  <td className="px-3 py-3 align-top">
-                    <input
-                      type="checkbox"
-                      checked={selectedLeadIds.includes(lead._id)}
-                      onChange={() => toggleLead(lead._id)}
-                    />
-                  </td>
-                  <td className="px-3 py-3 align-top font-medium text-slate-900">{lead.contactNumber}</td>
-                  <td className="px-3 py-3 align-top uppercase text-slate-600">{lead.product}</td>
-                  <td className="px-3 py-3 align-top text-slate-600">{lead.duplicateStatus}</td>
-                  <td className="px-3 py-3 align-top text-slate-600">{lead.assignedAgentCount}</td>
-                  {previewColumns.map((column) => (
-                    <td key={column} className="max-w-[220px] px-3 py-3 align-top text-slate-600">
-                      {lead.rawData?.[column] || '—'}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {batches.map((batch) => (
+            <div key={String(batch.importBatchId)} className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-900">{batch.batchName}</h3>
+                  <p className="mt-1 text-xs uppercase tracking-wide text-slate-500">{batch.product}</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Link
+                    to={`/analyst-dash/${batch.importBatchId}`}
+                    className="rounded-xl bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+                  >
+                    Full Data
+                  </Link>
+                  <Link
+                    to={`/analyst-dash/${batch.importBatchId}?view=assigned`}
+                    className="rounded-xl border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-white"
+                  >
+                    Assigned
+                  </Link>
+                  <Link
+                    to={`/analyst-dash/${batch.importBatchId}?view=unassigned`}
+                    className="rounded-xl border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-white"
+                  >
+                    Unassigned
+                  </Link>
+                </div>
+              </div>
+
+              <div className="mt-4 grid gap-2 text-sm text-slate-600">
+                <div>{batch.totalRows} total rows</div>
+                <div>{batch.assignedRows} assigned</div>
+                <div>{batch.unassignedRows} unassigned</div>
+                {batch.duplicateRows > 0 && (
+                  <div className="font-medium text-amber-700">{batch.duplicateRows} duplicate rows</div>
+                )}
+              </div>
+            </div>
+          ))}
+
+          {batches.length === 0 && (
+            <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-6 text-sm text-slate-500">
+              No datasets imported yet.
+            </div>
+          )}
         </div>
       </section>
     </div>

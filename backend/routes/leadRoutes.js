@@ -1,10 +1,13 @@
 import express from 'express';
 import {
   assignLeadsToAgent,
+  getAnalystBatches,
+  getMyAssignmentBatches,
   getAnalystLeads,
   getLeadMetadata,
   getMyAssignments,
   getUploadMiddleware,
+  hideAssignmentBatch,
   importLeads,
   previewLeadImport,
   updateAssignmentOutcome,
@@ -18,6 +21,7 @@ const router = express.Router();
 router.use(protect);
 
 router.get('/metadata', authorizeRoles(ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN), getLeadMetadata);
+router.get('/analyst/batches', authorizeRoles(ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN), getAnalystBatches);
 router.get('/analyst', authorizeRoles(ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN), getAnalystLeads);
 router.post(
   '/preview',
@@ -42,9 +46,19 @@ router.put(
   upsertRemarkConfig
 );
 router.get(
+  '/assignments/batches',
+  authorizeRoles(ROLES.AGENT, ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN),
+  getMyAssignmentBatches
+);
+router.get(
   '/assignments/mine',
   authorizeRoles(ROLES.AGENT, ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN),
   getMyAssignments
+);
+router.put(
+  '/assignments/batches/:importBatchId/hide',
+  authorizeRoles(ROLES.AGENT, ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN),
+  hideAssignmentBatch
 );
 router.put(
   '/assignments/:assignmentId',

@@ -77,6 +77,11 @@ const leadAssignmentSchema = new mongoose.Schema(
       default: '',
       trim: true,
     },
+    hiddenByAgent: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
   },
   {
     timestamps: true,

@@ -428,11 +428,17 @@ export const importLeads = asyncHandler(async (req, res) => {
 });
 
 export const getAnalystLeads = asyncHandler(async (req, res) => {
-  const { product, duplicateStatus, search, assignmentStatus } = req.query;
+  const { product, duplicateStatus, search, assignmentStatus, batchName, importBatchId } = req.query;
 
   const filters = {};
   if (product) {
     filters.product = String(product).toLowerCase();
+  }
+  if (batchName) {
+    filters.batchName = String(batchName).trim();
+  }
+  if (importBatchId) {
+    filters.importBatch = importBatchId;
   }
   if (duplicateStatus) {
     filters.duplicateStatus = duplicateStatus;
@@ -458,8 +464,79 @@ export const getAnalystLeads = asyncHandler(async (req, res) => {
     .populate('importBatch', 'sourceFileName')
     .lean();
 
+  const leadIds = leads.map((lead) => lead._id);
+  const assignments = leadIds.length
+    ? await LeadAssignment.find({ lead: { $in: leadIds } })
+        .select(
+          'lead assignedAgentName status contactabilityStatus callAttempt1Date callAttempt2Date callingRemark interestedRemark notInterestedRemark agentNotes updatedAt'
+        )
+        .sort({ updatedAt: -1 })
+        .lean()
+    : [];
+
+  const assignmentsByLeadId = assignments.reduce((accumulator, assignment) => {
+    const key = String(assignment.lead);
+    if (!accumulator[key]) {
+      accumulator[key] = [];
+    }
+    accumulator[key].push(assignment);
+    return accumulator;
+  }, {});
+
   res.status(200).json({
-    leads,
+    leads: leads.map((lead) => ({
+      ...lead,
+      assignments: assignmentsByLeadId[String(lead._id)] || [],
+    })),
+  });
+});
+
+export const getAnalystBatches = asyncHandler(async (req, res) => {
+  const { product } = req.query;
+
+  const matchStage = {};
+  if (product) {
+    matchStage.product = String(product).toLowerCase();
+  }
+
+  const batches = await Lead.aggregate([
+    {
+      $match: matchStage,
+    },
+    {
+      $group: {
+        _id: '$importBatch',
+        importBatchId: { $first: '$importBatch' },
+        batchName: { $first: '$batchName' },
+        product: { $first: '$product' },
+        totalRows: { $sum: 1 },
+        assignedRows: {
+          $sum: {
+            $cond: [{ $gt: ['$assignedAgentCount', 0] }, 1, 0],
+          },
+        },
+        unassignedRows: {
+          $sum: {
+            $cond: [{ $eq: ['$assignedAgentCount', 0] }, 1, 0],
+          },
+        },
+        duplicateRows: {
+          $sum: {
+            $cond: [{ $ne: ['$duplicateStatus', 'unique'] }, 1, 0],
+          },
+        },
+        createdAt: { $max: '$createdAt' },
+      },
+    },
+    {
+      $sort: {
+        createdAt: -1,
+      },
+    },
+  ]);
+
+  res.status(200).json({
+    batches,
   });
 });
 
@@ -509,10 +586,11 @@ export const assignLeadsToAgent = asyncHandler(async (req, res) => {
 });
 
 export const getMyAssignments = asyncHandler(async (req, res) => {
-  const { product, status, search } = req.query;
+  const { product, status, search, batchName, importBatchId } = req.query;
 
   const filters = {
     agent: req.user._id,
+    hiddenByAgent: { $ne: true },
   };
 
   if (product) {
@@ -521,10 +599,15 @@ export const getMyAssignments = asyncHandler(async (req, res) => {
   if (status) {
     filters.status = status;
   }
+  if (batchName) {
+    filters.batchName = String(batchName).trim();
+  }
+  if (importBatchId) {
+    filters.importBatch = importBatchId;
+  }
 
   const assignments = await LeadAssignment.find(filters)
     .sort({ createdAt: -1 })
-    .limit(200)
     .populate('lead')
     .lean();
 
@@ -552,6 +635,76 @@ export const getMyAssignments = asyncHandler(async (req, res) => {
       ...assignment,
       remarkConfig: remarkConfigMap[assignment.product] || null,
     })),
+  });
+});
+
+export const getMyAssignmentBatches = asyncHandler(async (req, res) => {
+  const batches = await LeadAssignment.aggregate([
+    {
+      $match: {
+        agent: req.user._id,
+        hiddenByAgent: { $ne: true },
+      },
+    },
+    {
+      $group: {
+        _id: '$importBatch',
+        importBatchId: { $first: '$importBatch' },
+        batchName: { $first: '$batchName' },
+        product: { $first: '$product' },
+        totalRows: { $sum: 1 },
+        newCount: {
+          $sum: {
+            $cond: [{ $eq: ['$status', 'new'] }, 1, 0],
+          },
+        },
+        followUpCount: {
+          $sum: {
+            $cond: [{ $eq: ['$status', 'follow_up'] }, 1, 0],
+          },
+        },
+        completedCount: {
+          $sum: {
+            $cond: [{ $eq: ['$status', 'completed'] }, 1, 0],
+          },
+        },
+        updatedAt: { $max: '$updatedAt' },
+      },
+    },
+    {
+      $sort: {
+        updatedAt: -1,
+      },
+    },
+  ]);
+
+  res.status(200).json({
+    batches,
+  });
+});
+
+export const hideAssignmentBatch = asyncHandler(async (req, res) => {
+  const { importBatchId } = req.params;
+
+  const result = await LeadAssignment.updateMany(
+    {
+      agent: req.user._id,
+      importBatch: importBatchId,
+    },
+    {
+      $set: {
+        hiddenByAgent: true,
+      },
+    }
+  );
+
+  if (!result.matchedCount) {
+    res.status(404);
+    throw new Error('Batch not found for this agent');
+  }
+
+  res.status(200).json({
+    message: 'Batch hidden from dashboard',
   });
 });
 
