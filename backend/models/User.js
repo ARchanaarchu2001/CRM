@@ -36,6 +36,29 @@ const userSchema = new mongoose.Schema(
       },
       default: ROLES.AGENT,
     },
+    profilePhoto: {
+      type: String,
+      default: null,
+    },
+    phoneNumber: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+    employeeId: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+    assignedTeam: {
+      type: String,
+      default: null,
+    },
+    teamLead: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
     isActive: {
       type: Boolean,
       default: true,
@@ -43,6 +66,14 @@ const userSchema = new mongoose.Schema(
     isBlocked: {
       type: Boolean,
       default: false,
+    },
+    isDeleted: {
+      type: Boolean,
+      default: false,
+    },
+    deletedAt: {
+      type: Date,
+      default: null,
     },
     lastLogin: {
       type: Date,
@@ -56,6 +87,16 @@ const userSchema = new mongoose.Schema(
       default: null,
     },
     createdBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
+    updatedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
+    deletedBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
       default: null,

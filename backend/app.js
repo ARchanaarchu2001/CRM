@@ -8,6 +8,7 @@ import { notFound, errorHandler } from './middleware/errorMiddleware.js';
 import authRoutes from './routes/authRoutes.js';
 import leadRoutes from './routes/leadRoutes.js';
 import userRoutes from './routes/userRoutes.js';
+import userManagementRoutes from './routes/userManagementRoutes.js';
 
 const app = express();
 
@@ -57,10 +58,16 @@ const limiter = rateLimit({
 });
 app.use('/api', limiter);
 
+import path from 'path';
+
 // Body Parsing & Cookies
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
+
+// Serve Static Uploads
+const __dirname = path.resolve();
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Base API and Health Check Route
 app.get('/api/health', (req, res) => {
@@ -71,6 +78,7 @@ app.get('/api/health', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/leads', leadRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/users', userManagementRoutes);
 
 // Error Handling Middleware
 app.use(notFound);

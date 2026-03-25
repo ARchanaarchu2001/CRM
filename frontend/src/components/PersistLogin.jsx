@@ -22,7 +22,6 @@ const PersistLogin = () => {
       }
     };
 
-    // If we have no accessToken in Redux memory but the user triggers a mount, we query the HTTPOnly Cookie implicitly over the interceptor
     if (!accessToken) {
       verifyRefreshToken();
     } else {
@@ -32,7 +31,7 @@ const PersistLogin = () => {
     return () => {
       isMounted = false;
     };
-  }, [accessToken, dispatch]);
+  }, []); // Run precisely once on mount
 
   if (isLoading) {
     return (

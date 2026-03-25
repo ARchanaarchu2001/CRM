@@ -14,7 +14,9 @@ import PublicRoute from './routes/PublicRoute';
 import PersistLogin from './components/PersistLogin';
 import MainLayout from './layouts/MainLayout';
 
-const TeamLeadDash = () => <div><h2 className="text-2xl font-bold text-purple-700">Team Lead Zone</h2><p>Team management tools here.</p></div>;
+import SuperAdminDash from './pages/SuperAdminDash';
+import TeamLeadDash from './pages/TeamLeadDash';
+
 const ManagerDash = () => <div><h2 className="text-2xl font-bold text-blue-700">Manager Zone</h2><p>Managers and above can see this.</p></div>;
 
 function App() {
@@ -37,7 +39,7 @@ function App() {
               <Route path="/dashboard" element={<DashboardHome />} />
               
               <Route element={<RoleProtectedRoute allowedRoles={['super_admin']} />}>
-                <Route path="/admin-dash" element={<AnalystDashboard />} />
+                <Route path="/admin-dash" element={<SuperAdminDash />} />
               </Route>
               
               <Route element={<RoleProtectedRoute allowedRoles={['data_analyst', 'super_admin']} />}>
