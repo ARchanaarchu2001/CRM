@@ -141,6 +141,61 @@ const parseWorkbookRows = (fileBuffer, originalName) => {
   });
 };
 
+const inferBatchNameFromFileName = (fileName) =>
+  String(fileName || '')
+    .replace(/\.[^.]+$/, '')
+    .trim();
+
+const parseJsonArrayField = (value, fallback = []) => {
+  if (!value) {
+    return fallback;
+  }
+
+  if (Array.isArray(value)) {
+    return value;
+  }
+
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : fallback;
+  } catch (error) {
+    return fallback;
+  }
+};
+
+const sanitizeAddedColumns = (value) =>
+  parseJsonArrayField(value).reduce((accumulator, item) => {
+    const name = String(item?.name || '').trim();
+    if (!name) {
+      return accumulator;
+    }
+
+    accumulator.push({
+      name,
+      defaultValue: String(item?.defaultValue || ''),
+    });
+    return accumulator;
+  }, []);
+
+const applyColumnEditsToRow = ({ row, removedColumns, addedColumns }) => {
+  const nextRow = Object.fromEntries(
+    Object.entries(row).filter(([key]) => !removedColumns.includes(key))
+  );
+
+  for (const column of addedColumns) {
+    nextRow[column.name] = column.defaultValue;
+  }
+
+  return nextRow;
+};
+
+const getTransformedHeaders = ({ headers, removedColumns, addedColumns }) => [
+  ...headers.filter((header) => !removedColumns.includes(header)),
+  ...addedColumns
+    .map((column) => column.name)
+    .filter((name) => !headers.includes(name)),
+];
+
 export const getUploadMiddleware = () => upload.single('file');
 
 export const getLeadMetadata = asyncHandler(async (req, res) => {
@@ -198,16 +253,10 @@ export const upsertRemarkConfig = asyncHandler(async (req, res) => {
   });
 });
 
-export const importLeads = asyncHandler(async (req, res) => {
+export const previewLeadImport = asyncHandler(async (req, res) => {
   if (!req.file) {
     res.status(400);
     throw new Error('Please upload a CSV or Excel file');
-  }
-
-  const product = String(req.body.product || '').trim().toLowerCase();
-  if (!DEFAULT_PRODUCTS.includes(product)) {
-    res.status(400);
-    throw new Error('Please choose a valid product');
   }
 
   const rows = parseWorkbookRows(req.file.buffer, req.file.originalname).filter((row) =>
@@ -220,14 +269,74 @@ export const importLeads = asyncHandler(async (req, res) => {
   }
 
   const headers = Object.keys(rows[0] || {});
+  const detectedContactColumn = inferContactColumn(headers, req.body.contactColumn);
+
+  res.status(200).json({
+    suggestedBatchName: inferBatchNameFromFileName(req.file.originalname),
+    fileName: req.file.originalname,
+    totalRows: rows.length,
+    headers,
+    detectedContactColumn,
+    sampleRows: rows.slice(0, 5),
+  });
+});
+
+export const importLeads = asyncHandler(async (req, res) => {
+  if (!req.file) {
+    res.status(400);
+    throw new Error('Please upload a CSV or Excel file');
+  }
+
+  const product = String(req.body.product || '').trim().toLowerCase();
+  const batchName = String(req.body.batchName || '').trim();
+  if (!DEFAULT_PRODUCTS.includes(product)) {
+    res.status(400);
+    throw new Error('Please choose a valid product');
+  }
+  if (!batchName) {
+    res.status(400);
+    throw new Error('Please enter an import name for this batch');
+  }
+
+  const rawRows = parseWorkbookRows(req.file.buffer, req.file.originalname).filter((row) =>
+    Object.values(row).some((value) => String(value || '').trim() !== '')
+  );
+
+  if (!rawRows.length) {
+    res.status(400);
+    throw new Error('The uploaded file has no lead rows');
+  }
+
+  const headers = Object.keys(rawRows[0] || {});
   const contactColumn = inferContactColumn(headers, req.body.contactColumn);
+  const removedColumns = parseJsonArrayField(req.body.removedColumns).map((item) => String(item));
+  const addedColumns = sanitizeAddedColumns(req.body.addedColumns);
 
   if (!contactColumn) {
     res.status(400);
     throw new Error(`Could not detect the contact number column. Available headers: ${headers.join(', ')}`);
   }
 
-  const normalizedContacts = rows
+  if (removedColumns.includes(contactColumn)) {
+    res.status(400);
+    throw new Error('The contact number column cannot be removed');
+  }
+
+  const transformedRows = rawRows.map((row) =>
+    applyColumnEditsToRow({
+      row,
+      removedColumns,
+      addedColumns,
+    })
+  );
+
+  const transformedHeaders = getTransformedHeaders({
+    headers,
+    removedColumns,
+    addedColumns,
+  });
+
+  const normalizedContacts = transformedRows
     .map((row) => normalizeContactNumber(row[contactColumn]))
     .filter(Boolean);
 
@@ -245,16 +354,17 @@ export const importLeads = asyncHandler(async (req, res) => {
 
   const importBatch = await LeadImport.create({
     product,
+    batchName,
     sourceFileName: req.file.originalname,
     uploadedBy: req.user._id,
     contactColumn,
-    headers,
+    headers: transformedHeaders,
   });
 
   let duplicateInFileCount = 0;
   let duplicateInSystemCount = 0;
 
-  const leadDocs = rows.reduce((accumulator, row, index) => {
+  const leadDocs = transformedRows.reduce((accumulator, row, index) => {
     const contactNumber = normalizeContactNumber(row[contactColumn]);
     if (!contactNumber) {
       return accumulator;
@@ -274,6 +384,7 @@ export const importLeads = asyncHandler(async (req, res) => {
 
     accumulator.push({
       importBatch: importBatch._id,
+      batchName,
       product,
       uploadedBy: req.user._id,
       rowIndex: index + 1,
@@ -305,7 +416,7 @@ export const importLeads = asyncHandler(async (req, res) => {
   res.status(201).json({
     message: 'Leads imported successfully',
     importBatch,
-    detectedHeaders: headers,
+    detectedHeaders: transformedHeaders,
     detectedContactColumn: contactColumn,
     summary: {
       totalRows: leadDocs.length,
@@ -381,6 +492,8 @@ export const assignLeadsToAgent = asyncHandler(async (req, res) => {
 
   const assignments = leads.map((lead) => ({
     lead: lead._id,
+    importBatch: lead.importBatch,
+    batchName: lead.batchName,
     product: lead.product,
     agent: agent._id,
     assignedBy: req.user._id,

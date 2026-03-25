@@ -8,6 +8,12 @@ const leadImportSchema = new mongoose.Schema(
       lowercase: true,
       trim: true,
     },
+    batchName: {
+      type: String,
+      required: true,
+      trim: true,
+      index: true,
+    },
     sourceFileName: {
       type: String,
       required: true,

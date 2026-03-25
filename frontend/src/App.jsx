@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import AgentDashboard from './pages/AgentDashboard';
 import AnalystDashboard from './pages/AnalystDashboard';
 import DashboardHome from './pages/DashboardHome';
+import LeadSettingsPage from './pages/LeadSettingsPage';
 import LoginPage from './pages/LoginPage';
 import UnauthorizedPage from './pages/UnauthorizedPage';
 import NotFoundPage from './pages/NotFoundPage';
@@ -40,6 +41,7 @@ function App() {
               
               <Route element={<RoleProtectedRoute allowedRoles={['data_analyst', 'super_admin']} />}>
                 <Route path="/analyst-dash" element={<AnalystDashboard />} />
+                <Route path="/lead-settings" element={<LeadSettingsPage />} />
               </Route>
 
               <Route element={<RoleProtectedRoute allowedRoles={['team_lead', 'manager', 'super_admin']} />}>

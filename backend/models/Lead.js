@@ -7,6 +7,12 @@ const leadSchema = new mongoose.Schema(
       ref: 'LeadImport',
       required: true,
     },
+    batchName: {
+      type: String,
+      required: true,
+      trim: true,
+      index: true,
+    },
     product: {
       type: String,
       required: true,

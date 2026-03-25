@@ -7,6 +7,17 @@ const leadAssignmentSchema = new mongoose.Schema(
       ref: 'Lead',
       required: true,
     },
+    importBatch: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'LeadImport',
+      required: true,
+    },
+    batchName: {
+      type: String,
+      required: true,
+      trim: true,
+      index: true,
+    },
     product: {
       type: String,
       required: true,

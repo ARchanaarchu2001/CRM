@@ -6,6 +6,7 @@ import {
   getMyAssignments,
   getUploadMiddleware,
   importLeads,
+  previewLeadImport,
   updateAssignmentOutcome,
   upsertRemarkConfig,
 } from '../controllers/leadController.js';
@@ -18,6 +19,12 @@ router.use(protect);
 
 router.get('/metadata', authorizeRoles(ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN), getLeadMetadata);
 router.get('/analyst', authorizeRoles(ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN), getAnalystLeads);
+router.post(
+  '/preview',
+  authorizeRoles(ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN),
+  getUploadMiddleware(),
+  previewLeadImport
+);
 router.post(
   '/import',
   authorizeRoles(ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN),
