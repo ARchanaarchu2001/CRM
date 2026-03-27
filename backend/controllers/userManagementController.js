@@ -173,7 +173,7 @@ export const updateUser = asyncHandler(async (req, res) => {
   }
 
   targetUser = await User.findByIdAndUpdate(req.params.id, req.body, {
-    new: true,
+    returnDocument: 'after',
     runValidators: true,
   }).select('-password -refreshToken');
 

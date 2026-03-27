@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { assignLeads, fetchAnalystLeads, fetchLeadMetadata } from '../api/leads.js';
+import { formatContactDisplay } from '../utils/contactNumber.js';
 
 const getDuplicateRowClasses = (duplicateStatus) => {
   if (duplicateStatus === 'duplicate_in_file_and_system') {
@@ -15,12 +16,30 @@ const getDuplicateRowClasses = (duplicateStatus) => {
   return '';
 };
 
+const DEFAULT_REMARK_CONFIG = {
+  contactabilityStatuses: ['Reachable', 'Not Reachable'],
+  callAttempt1Label: 'Call Attempt 1 - Date',
+  callAttempt2Label: 'Call Attempt 2 - Date',
+  callingRemarkLabel: 'Calling Remarks',
+  interestedRemarkLabel: 'Interested Remarks',
+  notInterestedRemarkLabel: 'Not Interested Remarks',
+};
+
+const escapeCsvValue = (value) => {
+  const stringValue = String(value ?? '');
+  if (/[",\n]/.test(stringValue)) {
+    return `"${stringValue.replace(/"/g, '""')}"`;
+  }
+  return stringValue;
+};
+
 const AnalystDatasetPage = () => {
   const { batchId } = useParams();
   const [searchParams] = useSearchParams();
   const requestedView = searchParams.get('view') || 'full';
   const [products, setProducts] = useState([]);
   const [agents, setAgents] = useState([]);
+  const [remarkConfigs, setRemarkConfigs] = useState([]);
   const [assignAgentId, setAssignAgentId] = useState('');
   const [leadFilters, setLeadFilters] = useState({
     product: '',
@@ -37,11 +56,13 @@ const AnalystDatasetPage = () => {
   const [selectedLeadIds, setSelectedLeadIds] = useState([]);
   const [lastSelectedIndex, setLastSelectedIndex] = useState(null);
   const [actionMessage, setActionMessage] = useState('');
+  const [copiedContact, setCopiedContact] = useState('');
 
   const loadMetadata = async () => {
     const data = await fetchLeadMetadata();
     setProducts(data.products || []);
     setAgents(data.agents || []);
+    setRemarkConfigs(data.remarkConfigs || []);
     setAssignAgentId((current) => current || data.agents?.[0]?._id || '');
   };
 
@@ -88,8 +109,75 @@ const AnalystDatasetPage = () => {
   const batchName = leads[0]?.batchName || '';
   const contactHeader = leads[0]?.contactColumn || 'Contact';
   const visibleHeaders = batchHeaders.filter((header) => header !== contactHeader);
-  const showAssignmentRemarks =
-    leadFilters.assignmentStatus === 'assigned' || leads.some((lead) => (lead.assignments || []).length > 0);
+  const currentProduct = leads[0]?.product || leadFilters.product || '';
+  const activeRemarkConfig =
+    remarkConfigs.find((config) => config.product === currentProduct) || DEFAULT_REMARK_CONFIG;
+  const assignedRows = useMemo(
+    () =>
+      leads.flatMap((lead) =>
+        (lead.assignments || []).map((assignment) => ({
+          ...assignment,
+          lead,
+        }))
+      ),
+    [leads]
+  );
+
+  const exportRows = useMemo(() => {
+    if (leadFilters.assignmentStatus === 'assigned') {
+      return assignedRows.map((assignment) => {
+        const row = {
+          [contactHeader]: formatContactDisplay(
+            assignment.lead?.rawData?.[contactHeader] || assignment.lead?.contactNumber || ''
+          ),
+          AssignedAgent: assignment.assignedAgentName || '',
+          Status: assignment.status || '',
+          ContactabilityStatus: assignment.contactabilityStatus || '',
+          [activeRemarkConfig.callAttempt1Label]: assignment.callAttempt1Date || '',
+          [activeRemarkConfig.callAttempt2Label]: assignment.callAttempt2Date || '',
+          [activeRemarkConfig.callingRemarkLabel]: assignment.callingRemark || '',
+          [activeRemarkConfig.interestedRemarkLabel]: assignment.interestedRemark || '',
+          [activeRemarkConfig.notInterestedRemarkLabel]: assignment.notInterestedRemark || '',
+          AgentNotes: assignment.agentNotes || '',
+        };
+        visibleHeaders.forEach((header) => {
+          row[header] = assignment.lead?.rawData?.[header] || '';
+        });
+        return row;
+      });
+    }
+
+    return leads.map((lead) => {
+      const row = {
+        [contactHeader]: formatContactDisplay(lead.rawData?.[contactHeader] || lead.contactNumber || ''),
+      };
+      visibleHeaders.forEach((header) => {
+        row[header] = lead.rawData?.[header] || '';
+      });
+      return row;
+    });
+  }, [activeRemarkConfig, assignedRows, contactHeader, leadFilters.assignmentStatus, leads, visibleHeaders]);
+
+  const handleExport = () => {
+    if (!exportRows.length) {
+      setActionMessage('No rows available to export for this view.');
+      return;
+    }
+
+    const headers = Object.keys(exportRows[0]);
+    const csv = [headers.map(escapeCsvValue).join(',')]
+      .concat(exportRows.map((row) => headers.map((header) => escapeCsvValue(row[header])).join(',')))
+      .join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${batchName || 'dataset'}-${leadFilters.assignmentStatus || 'full'}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  };
 
   const toggleLead = (leadId, index, shiftKey) => {
     if (shiftKey && lastSelectedIndex !== null) {
@@ -124,11 +212,32 @@ const AnalystDatasetPage = () => {
         agentId: assignAgentId,
       });
       setActionMessage(response.message);
+      if (leadFilters.assignmentStatus === 'unassigned') {
+        setLeads((current) => current.filter((lead) => !selectedLeadIds.includes(lead._id)));
+      }
       setSelectedLeadIds([]);
       setLastSelectedIndex(null);
       await loadLeads();
     } catch (error) {
       setActionMessage(error.response?.data?.message || 'Could not assign leads');
+    }
+  };
+
+  const handleCopyContact = async (value) => {
+    const contactValue = formatContactDisplay(value);
+    if (!contactValue) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(contactValue);
+      setCopiedContact(contactValue);
+      setActionMessage(`Copied ${contactValue}`);
+      window.setTimeout(() => {
+        setCopiedContact((current) => (current === contactValue ? '' : current));
+      }, 1800);
+    } catch (error) {
+      setActionMessage('Could not copy contact number');
     }
   };
 
@@ -220,6 +329,16 @@ const AnalystDatasetPage = () => {
           </form>
 
           <div className="flex items-end gap-3">
+            <button
+              type="button"
+              onClick={handleExport}
+              className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              Export View
+            </button>
+            <div className="rounded-2xl bg-slate-50 px-4 py-3 text-sm font-medium text-slate-700">
+              {selectedLeadIds.length} selected
+            </div>
             <label className="text-sm font-medium text-slate-700">
               Assign to agent
               <select
@@ -254,57 +373,117 @@ const AnalystDatasetPage = () => {
           <table className="min-w-[1400px] divide-y divide-slate-200 text-sm">
             <thead className="sticky top-0 z-10 bg-slate-100">
               <tr>
-                <th className="sticky left-0 z-20 border-r border-slate-200 bg-slate-100 px-3 py-3 text-left font-semibold text-slate-700">
-                  Pick
-                </th>
-                <th className="sticky left-[72px] z-20 border-r border-slate-200 bg-slate-100 px-3 py-3 text-left font-semibold text-slate-700">
+                {leadFilters.assignmentStatus !== 'assigned' && (
+                  <th className="sticky left-0 z-30 border-r border-slate-200 bg-slate-100 px-3 py-3 text-left font-semibold text-slate-700 shadow-[6px_0_8px_-8px_rgba(15,23,42,0.28)]">
+                    Pick
+                  </th>
+                )}
+                <th
+                  className={`sticky z-30 border-r border-slate-200 bg-slate-100 px-3 py-3 text-left font-semibold text-slate-700 shadow-[6px_0_8px_-8px_rgba(15,23,42,0.28)] ${
+                    leadFilters.assignmentStatus === 'assigned' ? 'left-0' : 'left-[72px]'
+                  }`}
+                >
                   {contactHeader}
                 </th>
-                {showAssignmentRemarks && (
-                  <th className="px-3 py-3 text-left font-semibold text-slate-700">Agent Remarks</th>
+                {leadFilters.assignmentStatus === 'assigned' && (
+                  <>
+                    <th className="px-3 py-3 text-left font-semibold text-slate-700">Assigned Agent</th>
+                  </>
                 )}
                 {visibleHeaders.map((header) => (
                   <th key={header} className="px-3 py-3 text-left font-semibold text-slate-700">
                     {header}
                   </th>
                 ))}
+                {leadFilters.assignmentStatus === 'assigned' && (
+                  <>
+                    <th className="px-3 py-3 text-left font-semibold text-slate-700">Status</th>
+                    <th className="px-3 py-3 text-left font-semibold text-slate-700">Contactability Status</th>
+                    <th className="px-3 py-3 text-left font-semibold text-slate-700">
+                      {activeRemarkConfig.callAttempt1Label}
+                    </th>
+                    <th className="px-3 py-3 text-left font-semibold text-slate-700">
+                      {activeRemarkConfig.callAttempt2Label}
+                    </th>
+                    <th className="px-3 py-3 text-left font-semibold text-slate-700">
+                      {activeRemarkConfig.callingRemarkLabel}
+                    </th>
+                    <th className="px-3 py-3 text-left font-semibold text-slate-700">
+                      {activeRemarkConfig.interestedRemarkLabel}
+                    </th>
+                    <th className="px-3 py-3 text-left font-semibold text-slate-700">
+                      {activeRemarkConfig.notInterestedRemarkLabel}
+                    </th>
+                    <th className="px-3 py-3 text-left font-semibold text-slate-700">Agent Notes</th>
+                  </>
+                )}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 bg-white">
-              {leads.map((lead, index) => (
-                <tr key={lead._id} className={getDuplicateRowClasses(lead.duplicateStatus)}>
-                  <td className="sticky left-0 z-10 border-r border-slate-100 bg-inherit px-3 py-2">
-                    <input
-                      type="checkbox"
-                      checked={selectedLeadIds.includes(lead._id)}
-                      onChange={(event) => toggleLead(lead._id, index, event.nativeEvent.shiftKey)}
-                    />
-                  </td>
-                  <td className="sticky left-[72px] z-10 border-r border-slate-100 bg-inherit px-3 py-2 font-medium text-slate-900">
-                    {lead.rawData?.[contactHeader] || lead.contactNumber}
-                  </td>
-                  {showAssignmentRemarks && (
-                    <td className="min-w-[280px] px-3 py-2 text-slate-700">
-                      {(lead.assignments || []).length === 0 && '—'}
-                      {(lead.assignments || []).map((assignment) => (
-                        <div key={assignment._id} className="mb-2 rounded-lg bg-white/70 px-2 py-1 text-xs leading-5">
-                          <div className="font-semibold text-slate-800">{assignment.assignedAgentName}</div>
-                          <div>Status: {assignment.status || 'new'}</div>
-                          {assignment.callingRemark && <div>Calling: {assignment.callingRemark}</div>}
-                          {assignment.interestedRemark && <div>Interested: {assignment.interestedRemark}</div>}
-                          {assignment.notInterestedRemark && <div>Not interested: {assignment.notInterestedRemark}</div>}
-                          {assignment.agentNotes && <div>Notes: {assignment.agentNotes}</div>}
-                        </div>
+              {leadFilters.assignmentStatus === 'assigned'
+                ? assignedRows.map((assignment) => {
+                    const lead = assignment.lead || {};
+                    return (
+                      <tr key={assignment._id} className={getDuplicateRowClasses(lead.duplicateStatus)}>
+                        <td className="sticky left-0 z-20 border-r border-slate-200 bg-white px-3 py-2 font-medium text-slate-900 shadow-[6px_0_8px_-8px_rgba(15,23,42,0.28)]">
+                          <button
+                            type="button"
+                            onClick={() => handleCopyContact(lead.rawData?.[contactHeader] || lead.contactNumber)}
+                            className="rounded px-1 py-0.5 text-left text-indigo-700 hover:bg-indigo-50 hover:text-indigo-900"
+                            title="Click to copy number"
+                          >
+                            {formatContactDisplay(lead.rawData?.[contactHeader] || lead.contactNumber)}
+                            {copiedContact === formatContactDisplay(lead.rawData?.[contactHeader] || lead.contactNumber)
+                              ? ' copied'
+                              : ''}
+                          </button>
+                        </td>
+                        <td className="px-3 py-2 text-slate-700">{assignment.assignedAgentName || '—'}</td>
+                        {visibleHeaders.map((header) => (
+                          <td key={`${assignment._id}-${header}`} className="px-3 py-2 text-slate-700">
+                            {lead.rawData?.[header] || '—'}
+                          </td>
+                        ))}
+                        <td className="px-3 py-2 text-slate-700">{assignment.status || 'new'}</td>
+                        <td className="px-3 py-2 text-slate-700">{assignment.contactabilityStatus || '—'}</td>
+                        <td className="px-3 py-2 text-slate-700">{assignment.callAttempt1Date || '—'}</td>
+                        <td className="px-3 py-2 text-slate-700">{assignment.callAttempt2Date || '—'}</td>
+                        <td className="px-3 py-2 text-slate-700">{assignment.callingRemark || '—'}</td>
+                        <td className="px-3 py-2 text-slate-700">{assignment.interestedRemark || '—'}</td>
+                        <td className="px-3 py-2 text-slate-700">{assignment.notInterestedRemark || '—'}</td>
+                        <td className="px-3 py-2 text-slate-700">{assignment.agentNotes || '—'}</td>
+                      </tr>
+                    );
+                  })
+                : leads.map((lead, index) => (
+                    <tr key={lead._id} className={getDuplicateRowClasses(lead.duplicateStatus)}>
+                      <td className="sticky left-0 z-20 border-r border-slate-200 bg-white px-3 py-2 shadow-[6px_0_8px_-8px_rgba(15,23,42,0.28)]">
+                        <input
+                          type="checkbox"
+                          checked={selectedLeadIds.includes(lead._id)}
+                          onChange={(event) => toggleLead(lead._id, index, event.nativeEvent.shiftKey)}
+                        />
+                      </td>
+                      <td className="sticky left-[72px] z-20 border-r border-slate-200 bg-white px-3 py-2 font-medium text-slate-900 shadow-[6px_0_8px_-8px_rgba(15,23,42,0.28)]">
+                        <button
+                          type="button"
+                          onClick={() => handleCopyContact(lead.rawData?.[contactHeader] || lead.contactNumber)}
+                          className="rounded px-1 py-0.5 text-left text-indigo-700 hover:bg-indigo-50 hover:text-indigo-900"
+                          title="Click to copy number"
+                        >
+                          {formatContactDisplay(lead.rawData?.[contactHeader] || lead.contactNumber)}
+                          {copiedContact === formatContactDisplay(lead.rawData?.[contactHeader] || lead.contactNumber)
+                            ? ' copied'
+                            : ''}
+                        </button>
+                      </td>
+                      {visibleHeaders.map((header) => (
+                        <td key={`${lead._id}-${header}`} className="px-3 py-2 text-slate-700">
+                          {lead.rawData?.[header] || '—'}
+                        </td>
                       ))}
-                    </td>
-                  )}
-                  {visibleHeaders.map((header) => (
-                    <td key={`${lead._id}-${header}`} className="px-3 py-2 text-slate-700">
-                      {lead.rawData?.[header] || '—'}
-                    </td>
+                    </tr>
                   ))}
-                </tr>
-              ))}
             </tbody>
           </table>
         </div>

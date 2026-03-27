@@ -10,6 +10,12 @@ import { ROLES } from '../constants/roles.js';
 
 const DEFAULT_PRODUCTS = ['mnp', 'p2p', 'fne', 'plus', 'general'];
 const DEFAULT_REMARKS = {
+  contactabilityStatuses: ['Reachable', 'Not Reachable'],
+  callAttempt1Label: 'Call Attempt 1 - Date',
+  callAttempt2Label: 'Call Attempt 2 - Date',
+  callingRemarkLabel: 'Calling Remarks',
+  interestedRemarkLabel: 'Interested Remarks',
+  notInterestedRemarkLabel: 'Not Interested Remarks',
   callingRemarks: [
     'Interested',
     'Follow up',
@@ -75,6 +81,46 @@ const normalizeContactNumber = (value) =>
     .replace(/[^\d+]/g, '')
     .trim();
 
+const convertScientificToPlainString = (value) => {
+  const input = String(value ?? '').trim();
+
+  if (!input || !/[eE]/.test(input)) {
+    return input;
+  }
+
+  const match = input.match(/^([+-]?)(\d+)(?:\.(\d+))?[eE]([+-]?\d+)$/);
+  if (!match) {
+    return input;
+  }
+
+  const [, sign, integerPart, fractionalPart = '', exponentString] = match;
+  const digits = `${integerPart}${fractionalPart}`;
+  const exponent = Number(exponentString);
+  const decimalIndex = integerPart.length + exponent;
+
+  if (decimalIndex <= 0) {
+    return `${sign}0.${'0'.repeat(Math.abs(decimalIndex))}${digits}`.replace(/\.$/, '');
+  }
+
+  if (decimalIndex >= digits.length) {
+    return `${sign}${digits}${'0'.repeat(decimalIndex - digits.length)}`;
+  }
+
+  return `${sign}${digits.slice(0, decimalIndex)}.${digits.slice(decimalIndex)}`.replace(/\.$/, '');
+};
+
+const toPlainCellString = (value) => {
+  if (value === null || value === undefined) {
+    return '';
+  }
+
+  if (typeof value === 'number') {
+    return Number.isInteger(value) ? value.toFixed(0) : String(value);
+  }
+
+  return convertScientificToPlainString(value);
+};
+
 const buildDuplicateStatus = ({ seenInFile, existsInSystem }) => {
   if (seenInFile && existsInSystem) {
     return 'duplicate_in_file_and_system';
@@ -91,6 +137,8 @@ const buildDuplicateStatus = ({ seenInFile, existsInSystem }) => {
   return 'unique';
 };
 
+const getTodayDateString = () => new Date().toISOString().slice(0, 10);
+
 const ensureDefaultRemarkConfigs = async () => {
   for (const product of DEFAULT_PRODUCTS) {
     await ProductRemarkConfig.findOneAndUpdate(
@@ -101,7 +149,7 @@ const ensureDefaultRemarkConfigs = async () => {
           ...DEFAULT_REMARKS,
         },
       },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: 'after' }
     );
   }
 };
@@ -135,10 +183,20 @@ const parseWorkbookRows = (fileBuffer, originalName) => {
     throw new Error(`Could not read worksheet from ${originalName}`);
   }
 
-  return XLSX.utils.sheet_to_json(worksheet, {
+  const formattedRows = XLSX.utils.sheet_to_json(worksheet, {
     defval: '',
     raw: false,
   });
+
+  const rawRows = XLSX.utils.sheet_to_json(worksheet, {
+    defval: '',
+    raw: true,
+  });
+
+  return {
+    formattedRows,
+    rawRows,
+  };
 };
 
 const inferBatchNameFromFileName = (fileName) =>
@@ -196,6 +254,12 @@ const getTransformedHeaders = ({ headers, removedColumns, addedColumns }) => [
     .filter((name) => !headers.includes(name)),
 ];
 
+const normalizeContactColumnValues = (formattedRows, rawRows, contactColumn) =>
+  formattedRows.map((row, index) => ({
+    ...row,
+    [contactColumn]: toPlainCellString(rawRows[index]?.[contactColumn] ?? row[contactColumn]),
+  }));
+
 export const getUploadMiddleware = () => upload.single('file');
 
 export const getLeadMetadata = asyncHandler(async (req, res) => {
@@ -235,6 +299,14 @@ export const upsertRemarkConfig = asyncHandler(async (req, res) => {
     { product: product.toLowerCase() },
     {
       product: product.toLowerCase(),
+      contactabilityStatuses: sanitizeList(req.body.contactabilityStatuses),
+      callAttempt1Label: String(req.body.callAttempt1Label || DEFAULT_REMARKS.callAttempt1Label).trim(),
+      callAttempt2Label: String(req.body.callAttempt2Label || DEFAULT_REMARKS.callAttempt2Label).trim(),
+      callingRemarkLabel: String(req.body.callingRemarkLabel || DEFAULT_REMARKS.callingRemarkLabel).trim(),
+      interestedRemarkLabel: String(req.body.interestedRemarkLabel || DEFAULT_REMARKS.interestedRemarkLabel).trim(),
+      notInterestedRemarkLabel: String(
+        req.body.notInterestedRemarkLabel || DEFAULT_REMARKS.notInterestedRemarkLabel
+      ).trim(),
       callingRemarks: sanitizeList(req.body.callingRemarks),
       interestedRemarks: sanitizeList(req.body.interestedRemarks),
       notInterestedRemarks: sanitizeList(req.body.notInterestedRemarks),
@@ -242,7 +314,7 @@ export const upsertRemarkConfig = asyncHandler(async (req, res) => {
     },
     {
       upsert: true,
-      new: true,
+      returnDocument: 'after',
       setDefaultsOnInsert: true,
     }
   );
@@ -259,9 +331,11 @@ export const previewLeadImport = asyncHandler(async (req, res) => {
     throw new Error('Please upload a CSV or Excel file');
   }
 
-  const rows = parseWorkbookRows(req.file.buffer, req.file.originalname).filter((row) =>
+  const { formattedRows, rawRows } = parseWorkbookRows(req.file.buffer, req.file.originalname);
+  const rows = formattedRows.filter((row) =>
     Object.values(row).some((value) => String(value || '').trim() !== '')
   );
+  const filteredRawRows = rawRows.filter((row) => Object.values(row).some((value) => String(value || '').trim() !== ''));
 
   if (!rows.length) {
     res.status(400);
@@ -270,6 +344,9 @@ export const previewLeadImport = asyncHandler(async (req, res) => {
 
   const headers = Object.keys(rows[0] || {});
   const detectedContactColumn = inferContactColumn(headers, req.body.contactColumn);
+  const normalizedRows = detectedContactColumn
+    ? normalizeContactColumnValues(rows, filteredRawRows, detectedContactColumn)
+    : rows;
 
   res.status(200).json({
     suggestedBatchName: inferBatchNameFromFileName(req.file.originalname),
@@ -277,7 +354,7 @@ export const previewLeadImport = asyncHandler(async (req, res) => {
     totalRows: rows.length,
     headers,
     detectedContactColumn,
-    sampleRows: rows.slice(0, 5),
+    sampleRows: normalizedRows.slice(0, 5),
   });
 });
 
@@ -298,7 +375,11 @@ export const importLeads = asyncHandler(async (req, res) => {
     throw new Error('Please enter an import name for this batch');
   }
 
-  const rawRows = parseWorkbookRows(req.file.buffer, req.file.originalname).filter((row) =>
+  const workbookRows = parseWorkbookRows(req.file.buffer, req.file.originalname);
+  const rawRows = workbookRows.formattedRows.filter((row) =>
+    Object.values(row).some((value) => String(value || '').trim() !== '')
+  );
+  const rawCellRows = workbookRows.rawRows.filter((row) =>
     Object.values(row).some((value) => String(value || '').trim() !== '')
   );
 
@@ -322,12 +403,22 @@ export const importLeads = asyncHandler(async (req, res) => {
     throw new Error('The contact number column cannot be removed');
   }
 
-  const transformedRows = rawRows.map((row) =>
-    applyColumnEditsToRow({
-      row,
-      removedColumns,
-      addedColumns,
-    })
+  const transformedRows = normalizeContactColumnValues(
+    rawRows.map((row) =>
+      applyColumnEditsToRow({
+        row,
+        removedColumns,
+        addedColumns,
+      })
+    ),
+    rawCellRows.map((row) =>
+      applyColumnEditsToRow({
+        row,
+        removedColumns,
+        addedColumns,
+      })
+    ),
+    contactColumn
   );
 
   const transformedHeaders = getTransformedHeaders({
@@ -586,12 +677,18 @@ export const assignLeadsToAgent = asyncHandler(async (req, res) => {
 });
 
 export const getMyAssignments = asyncHandler(async (req, res) => {
-  const { product, status, search, batchName, importBatchId } = req.query;
+  const { product, status, search, batchName, importBatchId, pipeline } = req.query;
 
   const filters = {
     agent: req.user._id,
     hiddenByAgent: { $ne: true },
   };
+
+  if (pipeline === 'true') {
+    filters.inPipeline = true;
+  } else if (pipeline === 'false') {
+    filters.inPipeline = { $ne: true };
+  }
 
   if (product) {
     filters.product = String(product).toLowerCase();
@@ -644,6 +741,7 @@ export const getMyAssignmentBatches = asyncHandler(async (req, res) => {
       $match: {
         agent: req.user._id,
         hiddenByAgent: { $ne: true },
+        inPipeline: { $ne: true },
       },
     },
     {
@@ -653,6 +751,11 @@ export const getMyAssignmentBatches = asyncHandler(async (req, res) => {
         batchName: { $first: '$batchName' },
         product: { $first: '$product' },
         totalRows: { $sum: 1 },
+        pipelineCount: {
+          $sum: {
+            $cond: [{ $eq: ['$inPipeline', true] }, 1, 0],
+          },
+        },
         newCount: {
           $sum: {
             $cond: [{ $eq: ['$status', 'new'] }, 1, 0],
@@ -680,6 +783,81 @@ export const getMyAssignmentBatches = asyncHandler(async (req, res) => {
 
   res.status(200).json({
     batches,
+  });
+});
+
+export const getMyPipelineSummary = asyncHandler(async (req, res) => {
+  const today = getTodayDateString();
+
+  const [summary] = await LeadAssignment.aggregate([
+    {
+      $match: {
+        agent: req.user._id,
+        hiddenByAgent: { $ne: true },
+        inPipeline: true,
+      },
+    },
+    {
+      $group: {
+        _id: null,
+        totalPipelineRows: { $sum: 1 },
+        dueTodayCount: {
+          $sum: {
+            $cond: [{ $eq: ['$pipelineFollowUpDate', today] }, 1, 0],
+          },
+        },
+        overdueCount: {
+          $sum: {
+            $cond: [
+              {
+                $and: [
+                  { $ne: ['$pipelineFollowUpDate', ''] },
+                  { $lt: ['$pipelineFollowUpDate', today] },
+                ],
+              },
+              1,
+              0,
+            ],
+          },
+        },
+      },
+    },
+  ]);
+
+  res.status(200).json({
+    totalPipelineRows: summary?.totalPipelineRows || 0,
+    dueTodayCount: summary?.dueTodayCount || 0,
+    overdueCount: summary?.overdueCount || 0,
+  });
+});
+
+export const getMyPipelineAssignments = asyncHandler(async (req, res) => {
+  const today = getTodayDateString();
+
+  const assignments = await LeadAssignment.find({
+    agent: req.user._id,
+    hiddenByAgent: { $ne: true },
+    inPipeline: true,
+  })
+    .sort({ pipelineFollowUpDate: 1, updatedAt: -1 })
+    .populate('lead')
+    .lean();
+
+  const remarkConfigMap = Object.fromEntries(
+    (await ProductRemarkConfig.find()).map((config) => [config.product, config])
+  );
+
+  res.status(200).json({
+    dueTodayCount: assignments.filter((assignment) => assignment.pipelineFollowUpDate === today).length,
+    overdueCount: assignments.filter(
+      (assignment) => assignment.pipelineFollowUpDate && assignment.pipelineFollowUpDate < today
+    ).length,
+    assignments: assignments.map((assignment) => ({
+      ...assignment,
+      isDueToday: assignment.pipelineFollowUpDate === today,
+      isOverdue: Boolean(assignment.pipelineFollowUpDate && assignment.pipelineFollowUpDate < today),
+      remarkConfig: remarkConfigMap[assignment.product] || null,
+    })),
   });
 });
 
@@ -733,6 +911,9 @@ export const updateAssignmentOutcome = asyncHandler(async (req, res) => {
     interestedRemark,
     notInterestedRemark,
     agentNotes,
+    inPipeline,
+    pipelineFollowUpDate,
+    pipelineNotes,
   } = req.body;
 
   assignment.status = status || assignment.status;
@@ -743,6 +924,9 @@ export const updateAssignmentOutcome = asyncHandler(async (req, res) => {
   assignment.interestedRemark = interestedRemark ?? assignment.interestedRemark;
   assignment.notInterestedRemark = notInterestedRemark ?? assignment.notInterestedRemark;
   assignment.agentNotes = agentNotes ?? assignment.agentNotes;
+  assignment.inPipeline = inPipeline ?? assignment.inPipeline;
+  assignment.pipelineFollowUpDate = pipelineFollowUpDate ?? assignment.pipelineFollowUpDate;
+  assignment.pipelineNotes = pipelineNotes ?? assignment.pipelineNotes;
 
   await assignment.save();
 

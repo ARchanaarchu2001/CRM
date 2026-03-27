@@ -3,6 +3,8 @@ import {
   assignLeadsToAgent,
   getAnalystBatches,
   getMyAssignmentBatches,
+  getMyPipelineAssignments,
+  getMyPipelineSummary,
   getAnalystLeads,
   getLeadMetadata,
   getMyAssignments,
@@ -49,6 +51,16 @@ router.get(
   '/assignments/batches',
   authorizeRoles(ROLES.AGENT, ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN),
   getMyAssignmentBatches
+);
+router.get(
+  '/assignments/pipeline',
+  authorizeRoles(ROLES.AGENT, ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN),
+  getMyPipelineAssignments
+);
+router.get(
+  '/assignments/pipeline/summary',
+  authorizeRoles(ROLES.AGENT, ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN),
+  getMyPipelineSummary
 );
 router.get(
   '/assignments/mine',

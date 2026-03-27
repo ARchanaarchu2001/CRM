@@ -1,8 +1,10 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import AgentDashboard from './pages/AgentDashboard';
+import AgentBatchPage from './pages/AgentBatchPage';
 import AnalystDashboard from './pages/AnalystDashboard';
 import AnalystDatasetPage from './pages/AnalystDatasetPage';
+import AgentPipelinePage from './pages/AgentPipelinePage';
 import DashboardHome from './pages/DashboardHome';
 import LeadSettingsPage from './pages/LeadSettingsPage';
 import LoginPage from './pages/LoginPage';
@@ -58,6 +60,8 @@ function App() {
 
               <Route element={<RoleProtectedRoute allowedRoles={['agent', 'super_admin']} />}>
                 <Route path="/agent-dash" element={<AgentDashboard />} />
+                <Route path="/agent-dash/:batchId" element={<AgentBatchPage />} />
+                <Route path="/agent-pipeline" element={<AgentPipelinePage />} />
               </Route>
 
             </Route>

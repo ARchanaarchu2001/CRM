@@ -13,6 +13,35 @@ const productRemarkConfigSchema = new mongoose.Schema(
       type: [String],
       default: [],
     },
+    contactabilityStatuses: {
+      type: [String],
+      default: ['Reachable', 'Not Reachable'],
+    },
+    callAttempt1Label: {
+      type: String,
+      default: 'Call Attempt 1 - Date',
+      trim: true,
+    },
+    callAttempt2Label: {
+      type: String,
+      default: 'Call Attempt 2 - Date',
+      trim: true,
+    },
+    callingRemarkLabel: {
+      type: String,
+      default: 'Calling Remarks',
+      trim: true,
+    },
+    interestedRemarkLabel: {
+      type: String,
+      default: 'Interested Remarks',
+      trim: true,
+    },
+    notInterestedRemarkLabel: {
+      type: String,
+      default: 'Not Interested Remarks',
+      trim: true,
+    },
     interestedRemarks: {
       type: [String],
       default: [],

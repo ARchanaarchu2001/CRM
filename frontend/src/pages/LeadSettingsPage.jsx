@@ -4,6 +4,12 @@ import { fetchLeadMetadata, updateRemarkConfig } from '../api/leads.js';
 const createInitialRemarkState = (configs = []) =>
   configs.reduce((accumulator, config) => {
     accumulator[config.product] = {
+      contactabilityStatuses: (config.contactabilityStatuses || []).join('\n'),
+      callAttempt1Label: config.callAttempt1Label || 'Call Attempt 1 - Date',
+      callAttempt2Label: config.callAttempt2Label || 'Call Attempt 2 - Date',
+      callingRemarkLabel: config.callingRemarkLabel || 'Calling Remarks',
+      interestedRemarkLabel: config.interestedRemarkLabel || 'Interested Remarks',
+      notInterestedRemarkLabel: config.notInterestedRemarkLabel || 'Not Interested Remarks',
       callingRemarks: (config.callingRemarks || []).join('\n'),
       interestedRemarks: (config.interestedRemarks || []).join('\n'),
       notInterestedRemarks: (config.notInterestedRemarks || []).join('\n'),
@@ -34,6 +40,12 @@ const LeadSettingsPage = () => {
   }, []);
 
   const currentRemarkConfig = remarkState[selectedProduct] || {
+    contactabilityStatuses: '',
+    callAttempt1Label: 'Call Attempt 1 - Date',
+    callAttempt2Label: 'Call Attempt 2 - Date',
+    callingRemarkLabel: 'Calling Remarks',
+    interestedRemarkLabel: 'Interested Remarks',
+    notInterestedRemarkLabel: 'Not Interested Remarks',
     callingRemarks: '',
     interestedRemarks: '',
     notInterestedRemarks: '',
@@ -42,6 +54,12 @@ const LeadSettingsPage = () => {
   const handleSave = async () => {
     try {
       const response = await updateRemarkConfig(selectedProduct, {
+        contactabilityStatuses: currentRemarkConfig.contactabilityStatuses.split('\n'),
+        callAttempt1Label: currentRemarkConfig.callAttempt1Label,
+        callAttempt2Label: currentRemarkConfig.callAttempt2Label,
+        callingRemarkLabel: currentRemarkConfig.callingRemarkLabel,
+        interestedRemarkLabel: currentRemarkConfig.interestedRemarkLabel,
+        notInterestedRemarkLabel: currentRemarkConfig.notInterestedRemarkLabel,
         callingRemarks: currentRemarkConfig.callingRemarks.split('\n'),
         interestedRemarks: currentRemarkConfig.interestedRemarks.split('\n'),
         notInterestedRemarks: currentRemarkConfig.notInterestedRemarks.split('\n'),
@@ -49,6 +67,12 @@ const LeadSettingsPage = () => {
       setRemarkState((current) => ({
         ...current,
         [selectedProduct]: {
+          contactabilityStatuses: response.remarkConfig.contactabilityStatuses.join('\n'),
+          callAttempt1Label: response.remarkConfig.callAttempt1Label,
+          callAttempt2Label: response.remarkConfig.callAttempt2Label,
+          callingRemarkLabel: response.remarkConfig.callingRemarkLabel,
+          interestedRemarkLabel: response.remarkConfig.interestedRemarkLabel,
+          notInterestedRemarkLabel: response.remarkConfig.notInterestedRemarkLabel,
           callingRemarks: response.remarkConfig.callingRemarks.join('\n'),
           interestedRemarks: response.remarkConfig.interestedRemarks.join('\n'),
           notInterestedRemarks: response.remarkConfig.notInterestedRemarks.join('\n'),
@@ -88,6 +112,118 @@ const LeadSettingsPage = () => {
         </div>
 
         <div className="mt-6 grid gap-4">
+          <label className="text-sm font-medium text-slate-700">
+            Contactability status options
+            <textarea
+              rows="4"
+              value={currentRemarkConfig.contactabilityStatuses}
+              onChange={(event) =>
+                setRemarkState((current) => ({
+                  ...current,
+                  [selectedProduct]: {
+                    ...currentRemarkConfig,
+                    contactabilityStatuses: event.target.value,
+                  },
+                }))
+              }
+              className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2"
+            />
+          </label>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <label className="text-sm font-medium text-slate-700">
+              Call attempt 1 label
+              <input
+                type="text"
+                value={currentRemarkConfig.callAttempt1Label}
+                onChange={(event) =>
+                  setRemarkState((current) => ({
+                    ...current,
+                    [selectedProduct]: {
+                      ...currentRemarkConfig,
+                      callAttempt1Label: event.target.value,
+                    },
+                  }))
+                }
+                className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2"
+              />
+            </label>
+
+            <label className="text-sm font-medium text-slate-700">
+              Call attempt 2 label
+              <input
+                type="text"
+                value={currentRemarkConfig.callAttempt2Label}
+                onChange={(event) =>
+                  setRemarkState((current) => ({
+                    ...current,
+                    [selectedProduct]: {
+                      ...currentRemarkConfig,
+                      callAttempt2Label: event.target.value,
+                    },
+                  }))
+                }
+                className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2"
+              />
+            </label>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-3">
+            <label className="text-sm font-medium text-slate-700">
+              Calling remark label
+              <input
+                type="text"
+                value={currentRemarkConfig.callingRemarkLabel}
+                onChange={(event) =>
+                  setRemarkState((current) => ({
+                    ...current,
+                    [selectedProduct]: {
+                      ...currentRemarkConfig,
+                      callingRemarkLabel: event.target.value,
+                    },
+                  }))
+                }
+                className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2"
+              />
+            </label>
+
+            <label className="text-sm font-medium text-slate-700">
+              Interested remark label
+              <input
+                type="text"
+                value={currentRemarkConfig.interestedRemarkLabel}
+                onChange={(event) =>
+                  setRemarkState((current) => ({
+                    ...current,
+                    [selectedProduct]: {
+                      ...currentRemarkConfig,
+                      interestedRemarkLabel: event.target.value,
+                    },
+                  }))
+                }
+                className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2"
+              />
+            </label>
+
+            <label className="text-sm font-medium text-slate-700">
+              Not interested remark label
+              <input
+                type="text"
+                value={currentRemarkConfig.notInterestedRemarkLabel}
+                onChange={(event) =>
+                  setRemarkState((current) => ({
+                    ...current,
+                    [selectedProduct]: {
+                      ...currentRemarkConfig,
+                      notInterestedRemarkLabel: event.target.value,
+                    },
+                  }))
+                }
+                className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2"
+              />
+            </label>
+          </div>
+
           <label className="text-sm font-medium text-slate-700">
             Calling remarks
             <textarea

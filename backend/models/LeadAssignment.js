@@ -46,8 +46,8 @@ const leadAssignmentSchema = new mongoose.Schema(
     },
     contactabilityStatus: {
       type: String,
-      enum: ['', 'Reachable', 'Not Reachable'],
       default: '',
+      trim: true,
     },
     callAttempt1Date: {
       type: String,
@@ -81,6 +81,21 @@ const leadAssignmentSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
       index: true,
+    },
+    inPipeline: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    pipelineFollowUpDate: {
+      type: String,
+      default: '',
+      trim: true,
+    },
+    pipelineNotes: {
+      type: String,
+      default: '',
+      trim: true,
     },
   },
   {

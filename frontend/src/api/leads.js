@@ -69,6 +69,16 @@ export const fetchMyAssignmentBatches = async () => {
   return response.data;
 };
 
+export const fetchMyPipelineSummary = async () => {
+  const response = await axiosPrivate.get('/leads/assignments/pipeline/summary');
+  return response.data;
+};
+
+export const fetchMyPipelineAssignments = async () => {
+  const response = await axiosPrivate.get('/leads/assignments/pipeline');
+  return response.data;
+};
+
 export const hideAssignmentBatch = async (importBatchId) => {
   const response = await axiosPrivate.put(`/leads/assignments/batches/${importBatchId}/hide`);
   return response.data;
