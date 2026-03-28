@@ -4,6 +4,7 @@ import {
   createAgentByTeamLead,
   getAllUsersForAdmin,
   getTeamLeadAgents,
+  getAllAgents,
   getUserById,
   updateUser,
   deactivateUser
@@ -51,10 +52,14 @@ router.get(
   getTeamLeadAgents
 );
 
-
 // =========================================================
-// MIXED / DYNAMIC SCOPE ROUTES (Controller manages granular)
+// DATA ANALYST ROUTES
 // =========================================================
+router.get(
+  '/agents-list',
+  authorizeRoles(ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN),
+  getAllAgents
+);
 router.get(
   '/:id',
   authorizeRoles(ROLES.SUPER_ADMIN, ROLES.TEAM_LEAD),

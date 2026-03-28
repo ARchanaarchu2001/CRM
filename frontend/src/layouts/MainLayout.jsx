@@ -17,6 +17,7 @@ const MainLayout = () => {
     { to: '/dashboard', label: 'Home', show: true },
     { to: '/analyst-dash', label: 'Analyst Workspace', show: ['data_analyst', 'super_admin'].includes(role) },
     { to: '/lead-settings', label: 'Lead Settings', show: ['data_analyst', 'super_admin'].includes(role) },
+    { to: '/reports', label: 'Reports', show: ['data_analyst', 'super_admin'].includes(role) },
     { to: '/agent-dash', label: 'Agent Board', show: ['agent', 'super_admin'].includes(role) },
     { to: '/agent-pipeline', label: 'Pipeline', show: ['agent', 'super_admin'].includes(role) },
     { to: '/manager-dash', label: 'Manager', show: ['manager', 'super_admin'].includes(role) },

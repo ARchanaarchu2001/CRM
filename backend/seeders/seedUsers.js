@@ -1,6 +1,9 @@
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
 import User from '../models/User.js';
+import Lead from '../models/Lead.js';
+import LeadImport from '../models/LeadImport.js';
+import LeadAssignment from '../models/LeadAssignment.js';
 import { ROLES } from '../constants/roles.js';
 
 // Load env variables
@@ -39,9 +42,42 @@ const usersToSeed = [
     isActive: true,
     isBlocked: false,
   },
+  // Agents
   {
-    fullName: 'Agent User',
-    email: 'agent@example.com',
+    fullName: 'John Smith',
+    email: 'john.smith@agent.com',
+    password: 'password123',
+    role: ROLES.AGENT,
+    isActive: true,
+    isBlocked: false,
+  },
+  {
+    fullName: 'Sarah Johnson',
+    email: 'sarah.johnson@agent.com',
+    password: 'password123',
+    role: ROLES.AGENT,
+    isActive: true,
+    isBlocked: false,
+  },
+  {
+    fullName: 'Michael Brown',
+    email: 'michael.brown@agent.com',
+    password: 'password123',
+    role: ROLES.AGENT,
+    isActive: true,
+    isBlocked: false,
+  },
+  {
+    fullName: 'Emily Davis',
+    email: 'emily.davis@agent.com',
+    password: 'password123',
+    role: ROLES.AGENT,
+    isActive: true,
+    isBlocked: false,
+  },
+  {
+    fullName: 'David Wilson',
+    email: 'david.wilson@agent.com',
     password: 'password123',
     role: ROLES.AGENT,
     isActive: true,
@@ -49,20 +85,23 @@ const usersToSeed = [
   },
 ];
 
-const seedUsers = async () => {
+const seedData = async () => {
   try {
-    // Connect to database securely
+    // Connect to database
     await mongoose.connect(process.env.MONGO_URI);
     console.log('Connected to MongoDB for seeding...');
 
+    // Seed users
+    const createdUsers = {};
     for (const userData of usersToSeed) {
-      // Check if user already exists to make script safe to run multiple times
       const existingUser = await User.findOne({ email: userData.email });
       
       if (!existingUser) {
-        await User.create(userData);
+        const createdUser = await User.create(userData);
+        createdUsers[userData.email] = createdUser;
         console.log(`Seeded new user: ${userData.email} (${userData.role})`);
       } else {
+        createdUsers[userData.email] = existingUser;
         console.log(`User already exists: ${userData.email}`);
       }
     }
@@ -75,4 +114,4 @@ const seedUsers = async () => {
   }
 };
 
-seedUsers();
+seedData();

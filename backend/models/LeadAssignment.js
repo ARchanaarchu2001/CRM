@@ -77,6 +77,16 @@ const leadAssignmentSchema = new mongoose.Schema(
       default: '',
       trim: true,
     },
+    // Detailed outcome tracking
+    dialCounted: {
+      type: Boolean,
+      default: false, // Whether this contact was dialed
+    },
+    outcomeCategory: {
+      type: String,
+      enum: ['', 'invalid_number', 'no_answer', 'not_interested', 'disconnecting_call', 'dndo', 'out_of_country', 'switched_off', 'took_service', 'callback_needed', 'not_reachable'],
+      default: '',
+    },
     hiddenByAgent: {
       type: Boolean,
       default: false,

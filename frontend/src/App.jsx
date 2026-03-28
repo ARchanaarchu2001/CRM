@@ -7,6 +7,7 @@ import AnalystDatasetPage from './pages/AnalystDatasetPage';
 import AgentPipelinePage from './pages/AgentPipelinePage';
 import DashboardHome from './pages/DashboardHome';
 import LeadSettingsPage from './pages/LeadSettingsPage';
+import ReportsPage from './pages/ReportsPage';
 import LoginPage from './pages/LoginPage';
 import UnauthorizedPage from './pages/UnauthorizedPage';
 import NotFoundPage from './pages/NotFoundPage';
@@ -48,6 +49,7 @@ function App() {
                 <Route path="/analyst-dash" element={<AnalystDashboard />} />
                 <Route path="/analyst-dash/:batchId" element={<AnalystDatasetPage />} />
                 <Route path="/lead-settings" element={<LeadSettingsPage />} />
+                <Route path="/reports" element={<ReportsPage />} />
               </Route>
 
               <Route element={<RoleProtectedRoute allowedRoles={['team_lead', 'manager', 'super_admin']} />}>

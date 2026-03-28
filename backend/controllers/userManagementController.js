@@ -113,6 +113,21 @@ export const getTeamLeadAgents = asyncHandler(async (req, res) => {
   res.status(200).json({ success: true, count: agents.length, data: agents });
 });
 
+/**
+ * @desc    Get all agents for reports (Data Analyst can view)
+ * @route   GET /api/user-management/agents-list
+ * @access  Private/DataAnalyst
+ */
+export const getAllAgents = asyncHandler(async (req, res) => {
+  const agents = await User.find({ 
+    role: ROLES.AGENT,
+    isDeleted: false,
+    isActive: true
+  }).select('-password -refreshToken').sort({ fullName: 1 });
+
+  res.status(200).json({ success: true, count: agents.length, data: agents });
+});
+
 
 /**
  * @desc    Get single user strictly respecting scopes
