@@ -91,9 +91,8 @@ const AgentDashboard = () => {
             <div className="mt-4 flex flex-wrap gap-2 text-xs text-slate-600">
               <span>{batch.totalRows} rows</span>
               <span>{batch.pipelineCount || 0} in pipeline</span>
-              <span>{batch.newCount} new</span>
-              <span>{batch.followUpCount} follow-up</span>
-              <span>{batch.completedCount} done</span>
+              <span>{batch.submittedCount || 0} submitted</span>
+              <span>{batch.activatedCount || 0} activated</span>
             </div>
 
             <div className="mt-5 flex flex-wrap gap-3">

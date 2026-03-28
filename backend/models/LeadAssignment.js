@@ -41,8 +41,8 @@ const leadAssignmentSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ['new', 'in_progress', 'follow_up', 'completed'],
-      default: 'new',
+      enum: ['', 'submitted', 'activated', 'new', 'in_progress', 'follow_up', 'completed'],
+      default: '',
     },
     contactabilityStatus: {
       type: String,
@@ -88,6 +88,26 @@ const leadAssignmentSchema = new mongoose.Schema(
       index: true,
     },
     pipelineFollowUpDate: {
+      type: String,
+      default: '',
+      trim: true,
+    },
+    pipelineNameColumn: {
+      type: String,
+      default: '',
+      trim: true,
+    },
+    pipelineContactColumn: {
+      type: String,
+      default: '',
+      trim: true,
+    },
+    pipelineDisplayName: {
+      type: String,
+      default: '',
+      trim: true,
+    },
+    pipelineDisplayContact: {
       type: String,
       default: '',
       trim: true,

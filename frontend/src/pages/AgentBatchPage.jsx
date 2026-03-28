@@ -49,19 +49,24 @@ const buildAttemptValue = (dateValue, timeValue) => {
   return time ? `${date} ${time}` : date;
 };
 
+const findDefaultNameColumn = (headers = []) =>
+  headers.find((header) => /^(name|customer name|lead name|full name)$/i.test(header)) ||
+  headers.find((header) => /name/i.test(header)) ||
+  '';
+
+const normalizeSortValue = (value) => String(value || '').toLowerCase();
+
 const AgentBatchPage = () => {
   const { batchId } = useParams();
   const navigate = useNavigate();
-  const [filters, setFilters] = useState({
-    product: '',
-    status: '',
-    search: '',
-  });
   const [batches, setBatches] = useState([]);
   const [assignments, setAssignments] = useState([]);
   const [message, setMessage] = useState('');
   const [saveState, setSaveState] = useState({});
   const [copiedContact, setCopiedContact] = useState('');
+  const [pipelineDraft, setPipelineDraft] = useState(null);
+  const [columnFilters, setColumnFilters] = useState({});
+  const [sortConfig, setSortConfig] = useState({ key: 'updatedAt', direction: 'desc' });
   const timersRef = useRef(new Map());
 
   const loadBatches = async () => {
@@ -69,7 +74,7 @@ const AgentBatchPage = () => {
     setBatches(data.batches || []);
   };
 
-  const loadAssignments = async (nextFilters = filters) => {
+  const loadAssignments = async () => {
     if (!batchId) {
       setAssignments([]);
       return;
@@ -77,7 +82,6 @@ const AgentBatchPage = () => {
 
     const data = await fetchMyAssignments({
       importBatchId: batchId,
-      ...nextFilters,
     });
     setAssignments(data.assignments || []);
   };
@@ -87,7 +91,7 @@ const AgentBatchPage = () => {
   }, [batchId]);
 
   useEffect(() => {
-    loadAssignments(filters);
+    loadAssignments();
   }, [batchId]);
 
   useEffect(() => {
@@ -112,6 +116,74 @@ const AgentBatchPage = () => {
 
   const contactHeader = assignments[0]?.lead?.contactColumn || 'Contact';
   const visibleReadOnlyHeaders = readOnlyHeaders.filter((header) => header !== contactHeader);
+  const filteredAssignments = useMemo(() => {
+    const entries = assignments.filter((assignment) => {
+      const lead = assignment.lead || {};
+      const checks = [
+        ['contact', formatContactDisplay(lead.rawData?.[contactHeader] || lead.contactNumber)],
+        ['product', assignment.product],
+        ['contactabilityStatus', assignment.contactabilityStatus],
+        ['callingRemark', assignment.callingRemark],
+        ['interestedRemark', assignment.interestedRemark],
+        ['notInterestedRemark', assignment.notInterestedRemark],
+        ['status', assignment.status],
+      ];
+
+      for (const header of visibleReadOnlyHeaders) {
+        checks.push([`raw:${header}`, lead.rawData?.[header] || '']);
+      }
+
+      return checks.every(([key, value]) => {
+        const filterValue = String(columnFilters[key] || '').trim().toLowerCase();
+        if (!filterValue) {
+          return true;
+        }
+        return String(value || '').toLowerCase().includes(filterValue);
+      });
+    });
+
+    const sortedEntries = [...entries].sort((left, right) => {
+      const leftLead = left.lead || {};
+      const rightLead = right.lead || {};
+
+      const readValue = (row, lead) => {
+        if (sortConfig.key === 'contact') {
+          return formatContactDisplay(lead.rawData?.[contactHeader] || lead.contactNumber);
+        }
+        if (sortConfig.key === 'product') return row.product;
+        if (sortConfig.key === 'status') return row.status;
+        if (sortConfig.key === 'contactabilityStatus') return row.contactabilityStatus;
+        if (sortConfig.key === 'callingRemark') return row.callingRemark;
+        if (sortConfig.key === 'interestedRemark') return row.interestedRemark;
+        if (sortConfig.key === 'notInterestedRemark') return row.notInterestedRemark;
+        if (sortConfig.key === 'updatedAt') return row.updatedAt;
+        if (sortConfig.key.startsWith('raw:')) return lead.rawData?.[sortConfig.key.replace('raw:', '')] || '';
+        return row[sortConfig.key] || '';
+      };
+
+      const leftValue = normalizeSortValue(readValue(left, leftLead));
+      const rightValue = normalizeSortValue(readValue(right, rightLead));
+      return sortConfig.direction === 'asc'
+        ? leftValue.localeCompare(rightValue)
+        : rightValue.localeCompare(leftValue);
+    });
+
+    return sortedEntries;
+  }, [assignments, columnFilters, contactHeader, sortConfig, visibleReadOnlyHeaders]);
+
+  const updateColumnFilter = (key, value) => {
+    setColumnFilters((current) => ({
+      ...current,
+      [key]: value,
+    }));
+  };
+
+  const toggleSort = (key) => {
+    setSortConfig((current) => ({
+      key,
+      direction: current.key === key && current.direction === 'asc' ? 'desc' : 'asc',
+    }));
+  };
 
   const queueAutosave = (assignment) => {
     const existingTimer = timersRef.current.get(assignment._id);
@@ -135,6 +207,13 @@ const AgentBatchPage = () => {
           interestedRemark: assignment.interestedRemark,
           notInterestedRemark: assignment.notInterestedRemark,
           agentNotes: assignment.agentNotes,
+          inPipeline: assignment.inPipeline,
+          pipelineFollowUpDate: assignment.pipelineFollowUpDate,
+          pipelineNameColumn: assignment.pipelineNameColumn,
+          pipelineContactColumn: assignment.pipelineContactColumn,
+          pipelineDisplayName: assignment.pipelineDisplayName,
+          pipelineDisplayContact: assignment.pipelineDisplayContact,
+          pipelineNotes: assignment.pipelineNotes,
         });
         setSaveState((current) => ({
           ...current,
@@ -166,11 +245,6 @@ const AgentBatchPage = () => {
     );
   };
 
-  const handleFilter = async (event) => {
-    event.preventDefault();
-    await loadAssignments(filters);
-  };
-
   const handleHideBatch = async () => {
     if (!batchId) {
       return;
@@ -198,18 +272,66 @@ const AgentBatchPage = () => {
     }
   };
 
-  const moveToPipeline = (assignment) => {
-    if (!assignment.pipelineFollowUpDate) {
+  const openPipelineDraft = (assignment) => {
+    const sourceHeaders = [contactHeader, ...visibleReadOnlyHeaders];
+    const defaultNameColumn = assignment.pipelineNameColumn || findDefaultNameColumn(sourceHeaders);
+    const defaultContactColumn = assignment.pipelineContactColumn || contactHeader;
+
+    setPipelineDraft({
+      assignmentId: assignment._id,
+      nameColumn: defaultNameColumn,
+      contactColumn: defaultContactColumn,
+      followUpDate: assignment.pipelineFollowUpDate || '',
+      note: assignment.pipelineNotes || '',
+      isAdded: Boolean(assignment.inPipeline),
+    });
+  };
+
+  const handlePipelineDraftChange = (field, value) => {
+    setPipelineDraft((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  };
+
+  const submitPipelineDraft = () => {
+    if (!pipelineDraft?.assignmentId) {
+      return;
+    }
+
+    const assignment = assignments.find((item) => item._id === pipelineDraft.assignmentId);
+    if (!assignment) {
+      setMessage('Could not find the row to add into pipeline.');
+      return;
+    }
+
+    if (!pipelineDraft.followUpDate) {
       setMessage('Choose a follow-up date before adding the row to pipeline.');
       return;
     }
 
-    handleFieldChange(assignment._id, 'inPipeline', true);
-    handleFieldChange(
-      assignment._id,
-      'status',
-      assignment.status === 'completed' ? assignment.status : 'follow_up'
+    const lead = assignment.lead || {};
+    const pipelineDisplayName = String(lead.rawData?.[pipelineDraft.nameColumn] || '').trim();
+    const pipelineDisplayContact = formatContactDisplay(
+      lead.rawData?.[pipelineDraft.contactColumn] || lead.contactNumber || ''
     );
+
+    const nextAssignment = {
+      ...assignment,
+      inPipeline: true,
+      pipelineFollowUpDate: pipelineDraft.followUpDate,
+      pipelineNotes: pipelineDraft.note,
+      pipelineNameColumn: pipelineDraft.nameColumn,
+      pipelineContactColumn: pipelineDraft.contactColumn,
+      pipelineDisplayName,
+      pipelineDisplayContact,
+    };
+
+    setAssignments((current) =>
+      current.map((item) => (item._id === assignment._id ? nextAssignment : item))
+    );
+    queueAutosave(nextAssignment);
+    setPipelineDraft(null);
     setMessage('Added to pipeline.');
   };
 
@@ -249,60 +371,98 @@ const AgentBatchPage = () => {
           </div>
         </div>
 
-        <form onSubmit={handleFilter} className="mt-5 flex flex-wrap gap-3">
-          <label className="text-sm font-medium text-slate-700">
-            Product
-            <input
-              type="text"
-              value={filters.product}
-              onChange={(event) => setFilters((current) => ({ ...current, product: event.target.value }))}
-              placeholder="p2p, mnp..."
-              className="mt-1 rounded-xl border border-slate-300 px-3 py-2"
-            />
-          </label>
-
-          <label className="text-sm font-medium text-slate-700">
-            Status
-            <select
-              value={filters.status}
-              onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}
-              className="mt-1 rounded-xl border border-slate-300 px-3 py-2"
-            >
-              <option value="">All</option>
-              <option value="new">New</option>
-              <option value="in_progress">In progress</option>
-              <option value="follow_up">Follow up</option>
-              <option value="completed">Completed</option>
-            </select>
-          </label>
-
-          <label className="min-w-[220px] flex-1 text-sm font-medium text-slate-700">
-            Search
-            <input
-              type="text"
-              value={filters.search}
-              onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))}
-              placeholder="Search contact or name"
-              className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2"
-            />
-          </label>
-
-          <button
-            type="submit"
-            className="self-end rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
-          >
-            Apply Filters
-          </button>
-        </form>
-
         {selectedBatch && (
           <div className="mt-4 rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-600">
-            Working batch: <strong>{selectedBatch.batchName}</strong> ({selectedBatch.totalRows} rows)
+            Working batch: <strong>{selectedBatch.batchName}</strong> ({filteredAssignments.length} visible rows)
           </div>
         )}
 
         {message && <p className="mt-4 text-sm text-slate-600">{message}</p>}
       </section>
+
+      {pipelineDraft && (
+        <section className="rounded-2xl border border-amber-200 bg-amber-50 p-6 shadow-sm">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <h3 className="text-lg font-semibold text-slate-900">Add To Pipeline</h3>
+              <p className="mt-2 text-sm text-slate-600">
+                Choose one name column, one contact column, a follow-up date, and an optional note for the pipeline template.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setPipelineDraft(null)}
+              className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-white"
+            >
+              Close
+            </button>
+          </div>
+
+          <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <label className="text-sm font-medium text-slate-700">
+              Name Column
+              <select
+                value={pipelineDraft.nameColumn}
+                onChange={(event) => handlePipelineDraftChange('nameColumn', event.target.value)}
+                className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2"
+              >
+                <option value="">Select name column</option>
+                {[contactHeader, ...visibleReadOnlyHeaders].map((header) => (
+                  <option key={header} value={header}>
+                    {header}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="text-sm font-medium text-slate-700">
+              Contact Column
+              <select
+                value={pipelineDraft.contactColumn}
+                onChange={(event) => handlePipelineDraftChange('contactColumn', event.target.value)}
+                className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2"
+              >
+                {[contactHeader, ...visibleReadOnlyHeaders].map((header) => (
+                  <option key={header} value={header}>
+                    {header}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="text-sm font-medium text-slate-700">
+              Follow-up Date
+              <input
+                type="date"
+                value={pipelineDraft.followUpDate}
+                onChange={(event) => handlePipelineDraftChange('followUpDate', event.target.value)}
+                className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2"
+              />
+            </label>
+
+            <label className="text-sm font-medium text-slate-700">
+              Pipeline Note
+              <input
+                type="text"
+                value={pipelineDraft.note}
+                onChange={(event) => handlePipelineDraftChange('note', event.target.value)}
+                placeholder="Optional note"
+                className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2"
+              />
+            </label>
+          </div>
+
+          <div className="mt-5">
+            <button
+              type="button"
+              onClick={submitPipelineDraft}
+              className="rounded-xl bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700"
+            >
+              Save Pipeline Row
+            </button>
+          </div>
+        </section>
+      )}
 
       <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="overflow-auto">
@@ -310,27 +470,159 @@ const AgentBatchPage = () => {
             <thead className="sticky top-0 z-10 bg-slate-100">
               <tr>
                 <th className="sticky left-0 z-30 border-r border-slate-200 bg-slate-100 px-3 py-3 text-left font-semibold text-slate-700 shadow-[6px_0_8px_-8px_rgba(15,23,42,0.28)]">
-                  {contactHeader}
+                  <button type="button" onClick={() => toggleSort('contact')}>
+                    {contactHeader}
+                  </button>
+                </th>
+                <th className="px-3 py-3 text-left font-semibold text-slate-700">
+                  <button type="button" onClick={() => toggleSort('product')}>
+                    Product
+                  </button>
                 </th>
                 {visibleReadOnlyHeaders.map((header) => (
                   <th key={header} className="px-3 py-3 text-left font-semibold text-slate-700">
-                    {header}
+                    <button type="button" onClick={() => toggleSort(`raw:${header}`)}>
+                      {header}
+                    </button>
                   </th>
                 ))}
-                <th className="px-3 py-3 text-left font-semibold text-slate-700">Contactability Status</th>
+                <th className="px-3 py-3 text-left font-semibold text-slate-700">
+                  <button type="button" onClick={() => toggleSort('contactabilityStatus')}>
+                    Contactability Status
+                  </button>
+                </th>
                 <th className="px-3 py-3 text-left font-semibold text-slate-700">{activeRemarkConfig.callAttempt1Label}</th>
                 <th className="px-3 py-3 text-left font-semibold text-slate-700">{activeRemarkConfig.callAttempt2Label}</th>
-                <th className="px-3 py-3 text-left font-semibold text-slate-700">{activeRemarkConfig.callingRemarkLabel}</th>
-                <th className="px-3 py-3 text-left font-semibold text-slate-700">{activeRemarkConfig.interestedRemarkLabel}</th>
-                <th className="px-3 py-3 text-left font-semibold text-slate-700">{activeRemarkConfig.notInterestedRemarkLabel}</th>
+                <th className="px-3 py-3 text-left font-semibold text-slate-700">
+                  <button type="button" onClick={() => toggleSort('callingRemark')}>
+                    {activeRemarkConfig.callingRemarkLabel}
+                  </button>
+                </th>
+                <th className="px-3 py-3 text-left font-semibold text-slate-700">
+                  <button type="button" onClick={() => toggleSort('interestedRemark')}>
+                    {activeRemarkConfig.interestedRemarkLabel}
+                  </button>
+                </th>
+                <th className="px-3 py-3 text-left font-semibold text-slate-700">
+                  <button type="button" onClick={() => toggleSort('notInterestedRemark')}>
+                    {activeRemarkConfig.notInterestedRemarkLabel}
+                  </button>
+                </th>
                 <th className="px-3 py-3 text-left font-semibold text-slate-700">Agent Notes</th>
-                <th className="px-3 py-3 text-left font-semibold text-slate-700">Status</th>
+                <th className="px-3 py-3 text-left font-semibold text-slate-700">
+                  <button type="button" onClick={() => toggleSort('status')}>
+                    Status
+                  </button>
+                </th>
                 <th className="px-3 py-3 text-left font-semibold text-slate-700">Pipeline</th>
                 <th className="px-3 py-3 text-left font-semibold text-slate-700">Save State</th>
               </tr>
+              <tr className="bg-white">
+                <th className="sticky left-0 z-20 border-r border-slate-200 bg-white px-3 py-2 shadow-[6px_0_8px_-8px_rgba(15,23,42,0.18)]">
+                  <input
+                    type="text"
+                    value={columnFilters.contact || ''}
+                    onChange={(event) => updateColumnFilter('contact', event.target.value)}
+                    placeholder="Search"
+                    className="w-[140px] rounded-lg border border-slate-300 px-2 py-1"
+                  />
+                </th>
+                <th className="px-3 py-2">
+                  <input
+                    type="text"
+                    value={columnFilters.product || ''}
+                    onChange={(event) => updateColumnFilter('product', event.target.value)}
+                    placeholder="Filter"
+                    className="w-[120px] rounded-lg border border-slate-300 px-2 py-1"
+                  />
+                </th>
+                {visibleReadOnlyHeaders.map((header) => (
+                  <th key={`${header}-filter`} className="px-3 py-2">
+                    <input
+                      type="text"
+                      value={columnFilters[`raw:${header}`] || ''}
+                      onChange={(event) => updateColumnFilter(`raw:${header}`, event.target.value)}
+                      placeholder="Search"
+                      className="w-[140px] rounded-lg border border-slate-300 px-2 py-1"
+                    />
+                  </th>
+                ))}
+                <th className="px-3 py-2">
+                  <select
+                    value={columnFilters.contactabilityStatus || ''}
+                    onChange={(event) => updateColumnFilter('contactabilityStatus', event.target.value)}
+                    className="w-[160px] rounded-lg border border-slate-300 px-2 py-1"
+                  >
+                    <option value="">All</option>
+                    {(activeRemarkConfig.contactabilityStatuses || []).map((status) => (
+                      <option key={status} value={status}>
+                        {status}
+                      </option>
+                    ))}
+                  </select>
+                </th>
+                <th className="px-3 py-2" />
+                <th className="px-3 py-2" />
+                <th className="px-3 py-2">
+                  <select
+                    value={columnFilters.callingRemark || ''}
+                    onChange={(event) => updateColumnFilter('callingRemark', event.target.value)}
+                    className="w-[170px] rounded-lg border border-slate-300 px-2 py-1"
+                  >
+                    <option value="">All</option>
+                    {activeRemarkConfig.callingRemarks.map((remark) => (
+                      <option key={remark} value={remark}>
+                        {remark}
+                      </option>
+                    ))}
+                  </select>
+                </th>
+                <th className="px-3 py-2">
+                  <select
+                    value={columnFilters.interestedRemark || ''}
+                    onChange={(event) => updateColumnFilter('interestedRemark', event.target.value)}
+                    className="w-[170px] rounded-lg border border-slate-300 px-2 py-1"
+                  >
+                    <option value="">All</option>
+                    {activeRemarkConfig.interestedRemarks.map((remark) => (
+                      <option key={remark} value={remark}>
+                        {remark}
+                      </option>
+                    ))}
+                  </select>
+                </th>
+                <th className="px-3 py-2">
+                  <select
+                    value={columnFilters.notInterestedRemark || ''}
+                    onChange={(event) => updateColumnFilter('notInterestedRemark', event.target.value)}
+                    className="w-[180px] rounded-lg border border-slate-300 px-2 py-1"
+                  >
+                    <option value="">All</option>
+                    {activeRemarkConfig.notInterestedRemarks.map((remark) => (
+                      <option key={remark} value={remark}>
+                        {remark}
+                      </option>
+                    ))}
+                  </select>
+                </th>
+                <th className="px-3 py-2" />
+                <th className="px-3 py-2">
+                  <select
+                    value={columnFilters.status || ''}
+                    onChange={(event) => updateColumnFilter('status', event.target.value)}
+                    className="w-[140px] rounded-lg border border-slate-300 px-2 py-1"
+                  >
+                    <option value="">All</option>
+                    <option value="submitted">Submitted</option>
+                    <option value="activated">Activated</option>
+                  </select>
+                </th>
+                <th className="px-3 py-2" />
+                <th className="px-3 py-2" />
+              </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 bg-white">
-              {assignments.map((assignment) => {
+              {filteredAssignments.map((assignment) => {
                 const lead = assignment.lead || {};
                 const remarks = assignment.remarkConfig || DEFAULT_REMARK_CONFIG;
 
@@ -349,6 +641,7 @@ const AgentBatchPage = () => {
                           : ''}
                       </button>
                     </td>
+                    <td className="px-3 py-2 text-slate-700">{assignment.product?.toUpperCase() || '—'}</td>
                     {visibleReadOnlyHeaders.map((header) => (
                       <td key={`${assignment._id}-${header}`} className="px-3 py-2 text-slate-600">
                         {lead.rawData?.[header] || '—'}
@@ -456,14 +749,13 @@ const AgentBatchPage = () => {
                     </td>
                     <td className="px-3 py-2">
                       <select
-                        value={assignment.status || 'new'}
+                        value={assignment.status || ''}
                         onChange={(event) => handleFieldChange(assignment._id, 'status', event.target.value)}
                         className="w-[140px] rounded-lg border border-slate-300 px-2 py-1"
                       >
-                        <option value="new">New</option>
-                        <option value="in_progress">In progress</option>
-                        <option value="follow_up">Follow up</option>
-                        <option value="completed">Completed</option>
+                        <option value="">Select</option>
+                        <option value="submitted">Submitted</option>
+                        <option value="activated">Activated</option>
                         </select>
                     </td>
                     <td className="px-3 py-2">
@@ -478,7 +770,7 @@ const AgentBatchPage = () => {
                         />
                         <button
                           type="button"
-                          onClick={() => moveToPipeline(assignment)}
+                          onClick={() => openPipelineDraft(assignment)}
                           className={`rounded-lg px-3 py-1 text-xs font-medium text-white ${
                             assignment.inPipeline ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-amber-600 hover:bg-amber-700'
                           }`}

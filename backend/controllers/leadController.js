@@ -756,19 +756,14 @@ export const getMyAssignmentBatches = asyncHandler(async (req, res) => {
             $cond: [{ $eq: ['$inPipeline', true] }, 1, 0],
           },
         },
-        newCount: {
+        submittedCount: {
           $sum: {
-            $cond: [{ $eq: ['$status', 'new'] }, 1, 0],
+            $cond: [{ $eq: ['$status', 'submitted'] }, 1, 0],
           },
         },
-        followUpCount: {
+        activatedCount: {
           $sum: {
-            $cond: [{ $eq: ['$status', 'follow_up'] }, 1, 0],
-          },
-        },
-        completedCount: {
-          $sum: {
-            $cond: [{ $eq: ['$status', 'completed'] }, 1, 0],
+            $cond: [{ $eq: ['$status', 'activated'] }, 1, 0],
           },
         },
         updatedAt: { $max: '$updatedAt' },
@@ -913,6 +908,10 @@ export const updateAssignmentOutcome = asyncHandler(async (req, res) => {
     agentNotes,
     inPipeline,
     pipelineFollowUpDate,
+    pipelineNameColumn,
+    pipelineContactColumn,
+    pipelineDisplayName,
+    pipelineDisplayContact,
     pipelineNotes,
   } = req.body;
 
@@ -926,6 +925,10 @@ export const updateAssignmentOutcome = asyncHandler(async (req, res) => {
   assignment.agentNotes = agentNotes ?? assignment.agentNotes;
   assignment.inPipeline = inPipeline ?? assignment.inPipeline;
   assignment.pipelineFollowUpDate = pipelineFollowUpDate ?? assignment.pipelineFollowUpDate;
+  assignment.pipelineNameColumn = pipelineNameColumn ?? assignment.pipelineNameColumn;
+  assignment.pipelineContactColumn = pipelineContactColumn ?? assignment.pipelineContactColumn;
+  assignment.pipelineDisplayName = pipelineDisplayName ?? assignment.pipelineDisplayName;
+  assignment.pipelineDisplayContact = pipelineDisplayContact ?? assignment.pipelineDisplayContact;
   assignment.pipelineNotes = pipelineNotes ?? assignment.pipelineNotes;
 
   await assignment.save();
