@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
+  deleteAnalystBatch as deleteAnalystBatchApi,
   fetchAnalystBatches,
   fetchLeadMetadata,
   importLeadFile,
@@ -28,6 +29,7 @@ const AnalystDashboard = () => {
     addedColumns: [],
     status: '',
   });
+  const [openProducts, setOpenProducts] = useState({});
 
   const loadMetadata = async () => {
     const data = await fetchLeadMetadata();
@@ -78,6 +80,31 @@ const AnalystDashboard = () => {
       return nextRow;
     });
   }, [uploadState.preview, visiblePreviewHeaders, uploadState.addedColumns]);
+
+  const groupedBatches = useMemo(
+    () =>
+      products.map((product) => ({
+        product,
+        batches: batches.filter((batch) => batch.product === product),
+      })),
+    [batches, products]
+  );
+
+  useEffect(() => {
+    setOpenProducts((current) =>
+      products.reduce((accumulator, product) => {
+        accumulator[product] = current[product] ?? true;
+        return accumulator;
+      }, {})
+    );
+  }, [products]);
+
+  const toggleProductSection = (product) => {
+    setOpenProducts((current) => ({
+      ...current,
+      [product]: !current[product],
+    }));
+  };
 
   const handlePreview = async (event) => {
     event.preventDefault();
@@ -136,7 +163,7 @@ const AnalystDashboard = () => {
       });
       setActionMessage('Import completed successfully.');
       await loadMetadata();
-      await loadBatches(selectedProduct);
+      await loadBatches();
     } catch (error) {
       setUploadState((current) => ({
         ...current,
@@ -175,6 +202,24 @@ const AnalystDashboard = () => {
       ...current,
       addedColumns: current.addedColumns.filter((_, columnIndex) => columnIndex !== index),
     }));
+  };
+
+  const handleDeleteBatch = async (batch) => {
+    const confirmed = window.confirm(
+      `Delete dataset "${batch.batchName}"? This will remove its leads, assignments, and tracking data.`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      const response = await deleteAnalystBatchApi(batch.importBatchId);
+      setActionMessage(response.message);
+      await loadBatches();
+    } catch (error) {
+      setActionMessage(error.response?.data?.message || 'Could not delete dataset');
+    }
   };
 
   if (isLoading) {
@@ -420,59 +465,89 @@ const AnalystDashboard = () => {
           <div>
             <h2 className="text-xl font-semibold text-slate-900">Datasets</h2>
             <p className="mt-2 text-sm text-slate-600">
-              Open a dataset to view its sheet. Duplicate counts only appear on the card if that dataset actually has duplicates.
+              Datasets are grouped by product first. Inside each product, open one dataset by its batch name.
             </p>
           </div>
         </div>
 
         {actionMessage && <p className="mt-4 text-sm text-slate-600">{actionMessage}</p>}
 
-        <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {batches.map((batch) => (
-            <div key={String(batch.importBatchId)} className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
-              <div className="flex items-start justify-between gap-3">
+        <div className="mt-6 space-y-8">
+          {groupedBatches.map(({ product, batches: productBatches }) => (
+            <section key={product} className="rounded-3xl border border-slate-200 bg-slate-50 p-4 sm:p-5">
+              <button
+                type="button"
+                onClick={() => toggleProductSection(product)}
+                className="flex w-full items-center justify-between gap-4 rounded-2xl bg-white px-5 py-4 text-left shadow-sm"
+              >
                 <div>
-                  <h3 className="text-lg font-semibold text-slate-900">{batch.batchName}</h3>
-                  <p className="mt-1 text-xs uppercase tracking-wide text-slate-500">{batch.product}</p>
+                  <h3 className="text-lg font-semibold text-slate-900">{product.toUpperCase()}</h3>
+                  <p className="text-sm text-slate-500">{productBatches.length} datasets</p>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  <Link
-                    to={`/analyst-dash/${batch.importBatchId}`}
-                    className="rounded-xl bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700"
-                  >
-                    Full Data
-                  </Link>
-                  <Link
-                    to={`/analyst-dash/${batch.importBatchId}?view=assigned`}
-                    className="rounded-xl border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-white"
-                  >
-                    Assigned
-                  </Link>
-                  <Link
-                    to={`/analyst-dash/${batch.importBatchId}?view=unassigned`}
-                    className="rounded-xl border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-white"
-                  >
-                    Unassigned
-                  </Link>
-                </div>
-              </div>
+                <span className="text-sm font-medium text-slate-500">
+                  {openProducts[product] ? 'Hide' : 'Show'}
+                </span>
+              </button>
 
-              <div className="mt-4 grid gap-2 text-sm text-slate-600">
-                <div>{batch.totalRows} total rows</div>
-                <div>{batch.assignedRows} assigned</div>
-                <div>{batch.unassignedRows} unassigned</div>
-                {batch.duplicateRows > 0 && (
-                  <div className="font-medium text-amber-700">{batch.duplicateRows} duplicate rows</div>
-                )}
-              </div>
-            </div>
+              {openProducts[product] && (
+                <div className="mt-4">
+                  {productBatches.length > 0 ? (
+                    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                      {productBatches.map((batch) => (
+                        <div key={String(batch.importBatchId)} className="rounded-2xl border border-slate-200 bg-white p-5">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <h4 className="text-lg font-semibold text-slate-900">{batch.batchName}</h4>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              <Link
+                                to={`/analyst-dash/${batch.importBatchId}`}
+                                className="rounded-xl bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+                              >
+                                Full Data
+                              </Link>
+                              <Link
+                                to={`/analyst-dash/${batch.importBatchId}?view=assigned`}
+                                className="rounded-xl border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                              >
+                                Assigned
+                              </Link>
+                              <Link
+                                to={`/analyst-dash/${batch.importBatchId}?view=unassigned`}
+                                className="rounded-xl border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                              >
+                                Unassigned
+                              </Link>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteBatch(batch)}
+                                className="rounded-xl border border-red-200 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="mt-4 grid gap-2 text-sm text-slate-600">
+                            <div>{batch.totalRows} total rows</div>
+                            <div>{batch.assignedRows} assigned</div>
+                            <div>{batch.unassignedRows} unassigned</div>
+                            {batch.duplicateRows > 0 && (
+                              <div className="font-medium text-amber-700">{batch.duplicateRows} duplicate rows</div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-6 text-sm text-slate-500">
+                      No datasets imported for this product yet.
+                    </div>
+                  )}
+                </div>
+              )}
+            </section>
           ))}
-
-          {batches.length === 0 && (
-            <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-6 text-sm text-slate-500">
-              No datasets imported yet.
-            </div>
-          )}
         </div>
       </section>
     </div>

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useParams, useSearchParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { assignLeads, fetchAnalystLeads, fetchLeadMetadata } from '../api/leads.js';
 import { formatContactDisplay } from '../utils/contactNumber.js';
 
@@ -35,12 +35,14 @@ const escapeCsvValue = (value) => {
 
 const AnalystDatasetPage = () => {
   const { batchId } = useParams();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const requestedView = searchParams.get('view') || 'full';
   const [products, setProducts] = useState([]);
   const [agents, setAgents] = useState([]);
   const [remarkConfigs, setRemarkConfigs] = useState([]);
   const [assignAgentId, setAssignAgentId] = useState('');
+  const [agentSearch, setAgentSearch] = useState('');
   const [leadFilters, setLeadFilters] = useState({
     product: '',
     duplicateStatus: '',
@@ -53,8 +55,11 @@ const AnalystDatasetPage = () => {
     search: '',
   });
   const [leads, setLeads] = useState([]);
+  const [totalCount, setTotalCount] = useState(0);
   const [selectedLeadIds, setSelectedLeadIds] = useState([]);
   const [lastSelectedIndex, setLastSelectedIndex] = useState(null);
+  const [isDragSelecting, setIsDragSelecting] = useState(false);
+  const [dragSelectionMode, setDragSelectionMode] = useState('select');
   const [actionMessage, setActionMessage] = useState('');
   const [copiedContact, setCopiedContact] = useState('');
 
@@ -72,6 +77,7 @@ const AnalystDatasetPage = () => {
       ...filters,
     });
     setLeads(response.leads || []);
+    setTotalCount(response.totalCount || 0);
   };
 
   useEffect(() => {
@@ -96,6 +102,12 @@ const AnalystDatasetPage = () => {
       assignmentStatus: nextAssignmentStatus,
     });
   }, [requestedView]);
+
+  useEffect(() => {
+    const stopDragSelection = () => setIsDragSelecting(false);
+    window.addEventListener('mouseup', stopDragSelection);
+    return () => window.removeEventListener('mouseup', stopDragSelection);
+  }, []);
 
   const batchHeaders = useMemo(() => {
     const keys = new Set();
@@ -122,6 +134,16 @@ const AnalystDatasetPage = () => {
       ),
     [leads]
   );
+  const filteredAgents = useMemo(() => {
+    const safeSearch = agentSearch.trim().toLowerCase();
+    if (!safeSearch) {
+      return agents;
+    }
+
+    return agents.filter((agent) =>
+      `${agent.fullName || ''} ${agent.email || ''}`.toLowerCase().includes(safeSearch)
+    );
+  }, [agentSearch, agents]);
 
   const exportRows = useMemo(() => {
     if (leadFilters.assignmentStatus === 'assigned') {
@@ -195,6 +217,29 @@ const AnalystDatasetPage = () => {
     setLastSelectedIndex(index);
   };
 
+  const handleLeadMouseDown = (leadId, index) => {
+    const isAlreadySelected = selectedLeadIds.includes(leadId);
+    const nextMode = isAlreadySelected ? 'deselect' : 'select';
+    setDragSelectionMode(nextMode);
+    setIsDragSelecting(true);
+    setSelectedLeadIds((current) =>
+      nextMode === 'select' ? Array.from(new Set([...current, leadId])) : current.filter((id) => id !== leadId)
+    );
+    setLastSelectedIndex(index);
+  };
+
+  const handleLeadMouseEnter = (leadId) => {
+    if (!isDragSelecting) {
+      return;
+    }
+
+    setSelectedLeadIds((current) =>
+      dragSelectionMode === 'select'
+        ? Array.from(new Set([...current, leadId]))
+        : current.filter((id) => id !== leadId)
+    );
+  };
+
   const handleFilterSubmit = async (event) => {
     event.preventDefault();
     await loadLeads(leadFilters);
@@ -248,12 +293,21 @@ const AnalystDatasetPage = () => {
           <div>
             <h2 className="text-xl font-semibold text-slate-900">{batchName || 'Dataset'}</h2>
             <p className="mt-2 text-sm text-slate-600">
-              Full-width dataset workspace. Use `Shift + click` on the first column to select a range of rows quickly.
+              Full-width dataset workspace. Use `Shift + click` or drag across the first column to select rows quickly.
             </p>
           </div>
-          <div className="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-600">
-            {leads.length} rows
-            {hasDuplicates ? ' · duplicate rows are highlighted' : ''}
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={() => navigate(-1)}
+              className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              Back
+            </button>
+            <div className="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-600">
+              {totalCount} rows
+              {hasDuplicates ? ' · duplicate rows are highlighted' : ''}
+            </div>
           </div>
         </div>
 
@@ -315,7 +369,7 @@ const AnalystDatasetPage = () => {
                 type="text"
                 value={leadFilters.search}
                 onChange={(event) => setLeadFilters((current) => ({ ...current, search: event.target.value }))}
-                placeholder="Search contact or name"
+                placeholder="Search any field in the row"
                 className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2"
               />
             </label>
@@ -339,21 +393,33 @@ const AnalystDatasetPage = () => {
             <div className="rounded-2xl bg-slate-50 px-4 py-3 text-sm font-medium text-slate-700">
               {selectedLeadIds.length} selected
             </div>
-            <label className="text-sm font-medium text-slate-700">
-              Assign to agent
-              <select
-                value={assignAgentId}
-                onChange={(event) => setAssignAgentId(event.target.value)}
-                className="mt-1 rounded-xl border border-slate-300 px-3 py-2"
-              >
-                <option value="">Select agent</option>
-                {agents.map((agent) => (
-                  <option key={agent._id} value={agent._id}>
-                    {agent.fullName}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <div className="min-w-[280px] space-y-2">
+              <label className="block text-sm font-medium text-slate-700">
+                Search agent
+                <input
+                  type="text"
+                  value={agentSearch}
+                  onChange={(event) => setAgentSearch(event.target.value)}
+                  placeholder="Search by name or email"
+                  className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2"
+                />
+              </label>
+              <label className="block text-sm font-medium text-slate-700">
+                Assign to agent
+                <select
+                  value={assignAgentId}
+                  onChange={(event) => setAssignAgentId(event.target.value)}
+                  className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2"
+                >
+                  <option value="">Select agent</option>
+                  {filteredAgents.map((agent) => (
+                    <option key={agent._id} value={agent._id}>
+                      {agent.fullName} ({agent.email})
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
 
             <button
               type="button"
@@ -457,11 +523,19 @@ const AnalystDatasetPage = () => {
                   })
                 : leads.map((lead, index) => (
                     <tr key={lead._id} className={getDuplicateRowClasses(lead.duplicateStatus)}>
-                      <td className="sticky left-0 z-20 border-r border-slate-200 bg-white px-3 py-2 shadow-[6px_0_8px_-8px_rgba(15,23,42,0.28)]">
+                      <td
+                        className="sticky left-0 z-20 cursor-pointer border-r border-slate-200 bg-white px-3 py-2 shadow-[6px_0_8px_-8px_rgba(15,23,42,0.28)]"
+                        onMouseDown={(event) => {
+                          event.preventDefault();
+                          handleLeadMouseDown(lead._id, index);
+                        }}
+                        onMouseEnter={() => handleLeadMouseEnter(lead._id)}
+                      >
                         <input
                           type="checkbox"
                           checked={selectedLeadIds.includes(lead._id)}
-                          onChange={(event) => toggleLead(lead._id, index, event.nativeEvent.shiftKey)}
+                          readOnly
+                          className="pointer-events-none"
                         />
                       </td>
                       <td className="sticky left-[72px] z-20 border-r border-slate-200 bg-white px-3 py-2 font-medium text-slate-900 shadow-[6px_0_8px_-8px_rgba(15,23,42,0.28)]">

@@ -54,6 +54,11 @@ export const fetchAnalystBatches = async (params) => {
   return response.data;
 };
 
+export const deleteAnalystBatch = async (importBatchId) => {
+  const response = await axiosPrivate.delete(`/leads/analyst/batches/${importBatchId}`);
+  return response.data;
+};
+
 export const assignLeads = async (payload) => {
   const response = await axiosPrivate.post('/leads/assign', payload);
   return response.data;

@@ -1,6 +1,7 @@
 import express from 'express';
 import {
   assignLeadsToAgent,
+  deleteAnalystBatch,
   getAnalystBatches,
   getMyAssignmentBatches,
   getMyPipelineAssignments,
@@ -41,6 +42,11 @@ router.post(
   '/assign',
   authorizeRoles(ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN),
   assignLeadsToAgent
+);
+router.delete(
+  '/analyst/batches/:importBatchId',
+  authorizeRoles(ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN),
+  deleteAnalystBatch
 );
 router.put(
   '/remarks/:product',

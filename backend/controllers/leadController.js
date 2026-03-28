@@ -534,14 +534,6 @@ export const getAnalystLeads = asyncHandler(async (req, res) => {
   if (duplicateStatus) {
     filters.duplicateStatus = duplicateStatus;
   }
-  if (search) {
-    const safeSearch = String(search).trim();
-    filters.$or = [
-      { contactNumber: { $regex: safeSearch, $options: 'i' } },
-      { 'rawData.NAME': { $regex: safeSearch, $options: 'i' } },
-      { 'rawData.Name': { $regex: safeSearch, $options: 'i' } },
-    ];
-  }
   if (assignmentStatus === 'unassigned') {
     filters.assignedAgentCount = 0;
   }
@@ -551,11 +543,24 @@ export const getAnalystLeads = asyncHandler(async (req, res) => {
 
   const leads = await Lead.find(filters)
     .sort({ createdAt: -1 })
-    .limit(200)
     .populate('importBatch', 'sourceFileName')
     .lean();
 
-  const leadIds = leads.map((lead) => lead._id);
+  const filteredLeads = search
+    ? leads.filter((lead) => {
+        const safeSearch = String(search).trim().toLowerCase();
+        const valuesToSearch = [
+          lead.contactNumber,
+          lead.batchName,
+          lead.product,
+          ...Object.values(lead.rawData || {}),
+        ];
+
+        return valuesToSearch.some((value) => String(value || '').toLowerCase().includes(safeSearch));
+      })
+    : leads;
+
+  const leadIds = filteredLeads.map((lead) => lead._id);
   const assignments = leadIds.length
     ? await LeadAssignment.find({ lead: { $in: leadIds } })
         .select(
@@ -575,7 +580,8 @@ export const getAnalystLeads = asyncHandler(async (req, res) => {
   }, {});
 
   res.status(200).json({
-    leads: leads.map((lead) => ({
+    totalCount: filteredLeads.length,
+    leads: filteredLeads.map((lead) => ({
       ...lead,
       assignments: assignmentsByLeadId[String(lead._id)] || [],
     })),
@@ -676,6 +682,26 @@ export const assignLeadsToAgent = asyncHandler(async (req, res) => {
   });
 });
 
+export const deleteAnalystBatch = asyncHandler(async (req, res) => {
+  const { importBatchId } = req.params;
+
+  const importBatch = await LeadImport.findById(importBatchId);
+  if (!importBatch) {
+    res.status(404);
+    throw new Error('Dataset not found');
+  }
+
+  await Promise.all([
+    LeadAssignment.deleteMany({ importBatch: importBatchId }),
+    Lead.deleteMany({ importBatch: importBatchId }),
+    LeadImport.findByIdAndDelete(importBatchId),
+  ]);
+
+  res.status(200).json({
+    message: `Deleted dataset ${importBatch.batchName}`,
+  });
+});
+
 export const getMyAssignments = asyncHandler(async (req, res) => {
   const { product, status, search, batchName, importBatchId, pipeline } = req.query;
 
@@ -754,6 +780,66 @@ export const getMyAssignmentBatches = asyncHandler(async (req, res) => {
         pipelineCount: {
           $sum: {
             $cond: [{ $eq: ['$inPipeline', true] }, 1, 0],
+          },
+        },
+        notDialedCount: {
+          $sum: {
+            $cond: [
+              {
+                $and: [
+                  { $eq: [{ $ifNull: ['$contactabilityStatus', ''] }, ''] },
+                  { $eq: [{ $ifNull: ['$callingRemark', ''] }, ''] },
+                  { $eq: [{ $ifNull: ['$interestedRemark', ''] }, ''] },
+                  { $eq: [{ $ifNull: ['$notInterestedRemark', ''] }, ''] },
+                  { $eq: [{ $ifNull: ['$callAttempt1Date', ''] }, ''] },
+                  { $eq: [{ $ifNull: ['$callAttempt2Date', ''] }, ''] },
+                ],
+              },
+              1,
+              0,
+            ],
+          },
+        },
+        dialedCount: {
+          $sum: {
+            $cond: [
+              {
+                $or: [
+                  { $ne: [{ $ifNull: ['$contactabilityStatus', ''] }, ''] },
+                  { $ne: [{ $ifNull: ['$callingRemark', ''] }, ''] },
+                  { $ne: [{ $ifNull: ['$interestedRemark', ''] }, ''] },
+                  { $ne: [{ $ifNull: ['$notInterestedRemark', ''] }, ''] },
+                  { $ne: [{ $ifNull: ['$callAttempt1Date', ''] }, ''] },
+                  { $ne: [{ $ifNull: ['$callAttempt2Date', ''] }, ''] },
+                ],
+              },
+              1,
+              0,
+            ],
+          },
+        },
+        followUpCount: {
+          $sum: {
+            $cond: [{ $eq: ['$callingRemark', 'Follow up'] }, 1, 0],
+          },
+        },
+        callbackCount: {
+          $sum: {
+            $cond: [{ $eq: ['$callingRemark', 'Call back'] }, 1, 0],
+          },
+        },
+        interestedCount: {
+          $sum: {
+            $cond: [
+              {
+                $or: [
+                  { $eq: ['$callingRemark', 'Interested'] },
+                  { $ne: [{ $ifNull: ['$interestedRemark', ''] }, ''] },
+                ],
+              },
+              1,
+              0,
+            ],
           },
         },
         submittedCount: {

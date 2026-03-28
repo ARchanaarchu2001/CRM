@@ -170,6 +170,27 @@ const AgentBatchPage = () => {
 
     return sortedEntries;
   }, [assignments, columnFilters, contactHeader, sortConfig, visibleReadOnlyHeaders]);
+  const batchStats = useMemo(() => {
+    const countMatches = (matcher) => filteredAssignments.filter(matcher).length;
+    const isNotDialed = (assignment) =>
+      !assignment.contactabilityStatus &&
+      !assignment.callingRemark &&
+      !assignment.interestedRemark &&
+      !assignment.notInterestedRemark &&
+      !assignment.callAttempt1Date &&
+      !assignment.callAttempt2Date;
+
+    return {
+      total: filteredAssignments.length,
+      pending: countMatches(isNotDialed),
+      dialed: countMatches((assignment) => !isNotDialed(assignment)),
+      followUp: countMatches((assignment) => assignment.callingRemark === 'Follow up'),
+      callback: countMatches((assignment) => assignment.callingRemark === 'Call back'),
+      interested: countMatches(
+        (assignment) => assignment.callingRemark === 'Interested' || Boolean(assignment.interestedRemark)
+      ),
+    };
+  }, [filteredAssignments]);
 
   const updateColumnFilter = (key, value) => {
     setColumnFilters((current) => ({
@@ -356,10 +377,10 @@ const AgentBatchPage = () => {
           <div className="flex flex-wrap gap-3">
             <button
               type="button"
-              onClick={() => navigate('/agent-dash')}
+              onClick={() => navigate(-1)}
               className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
             >
-              Back To Batches
+              Back
             </button>
             <button
               type="button"
@@ -372,8 +393,18 @@ const AgentBatchPage = () => {
         </div>
 
         {selectedBatch && (
-          <div className="mt-4 rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-600">
-            Working batch: <strong>{selectedBatch.batchName}</strong> ({filteredAssignments.length} visible rows)
+          <div className="mt-4 space-y-3">
+            <div className="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-600">
+              Working batch: <strong>{selectedBatch.batchName}</strong> ({filteredAssignments.length} visible rows)
+            </div>
+            <div className="flex flex-wrap gap-3 text-sm">
+              <div className="rounded-2xl bg-slate-50 px-4 py-3 text-slate-700">{batchStats.total} total</div>
+              <div className="rounded-2xl bg-amber-50 px-4 py-3 text-amber-800">{batchStats.pending} pending</div>
+              <div className="rounded-2xl bg-sky-50 px-4 py-3 text-sky-800">{batchStats.dialed} dialed</div>
+              <div className="rounded-2xl bg-yellow-50 px-4 py-3 text-yellow-800">{batchStats.followUp} follow up</div>
+              <div className="rounded-2xl bg-orange-50 px-4 py-3 text-orange-800">{batchStats.callback} callback</div>
+              <div className="rounded-2xl bg-emerald-50 px-4 py-3 text-emerald-800">{batchStats.interested} interested</div>
+            </div>
           </div>
         )}
 

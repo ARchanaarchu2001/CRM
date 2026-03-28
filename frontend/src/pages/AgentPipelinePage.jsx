@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { updateAssignment, fetchMyPipelineAssignments } from '../api/leads.js';
 import { formatContactDisplay } from '../utils/contactNumber.js';
 
@@ -36,6 +37,7 @@ const buildAttemptValue = (dateValue, timeValue) => {
 const normalizeSortValue = (value) => String(value || '').toLowerCase();
 
 const AgentPipelinePage = () => {
+  const navigate = useNavigate();
   const [assignments, setAssignments] = useState([]);
   const [summary, setSummary] = useState({ dueTodayCount: 0, overdueCount: 0 });
   const [message, setMessage] = useState('');
@@ -209,10 +211,21 @@ const AgentPipelinePage = () => {
   return (
     <div className="space-y-6">
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <h2 className="text-xl font-semibold text-slate-900">Pipeline</h2>
-        <p className="mt-2 text-sm text-slate-600">
-          Move rows here for planned follow-up. Due-today and overdue rows act as your in-app notification list.
-        </p>
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h2 className="text-xl font-semibold text-slate-900">Pipeline</h2>
+            <p className="mt-2 text-sm text-slate-600">
+              Move rows here for planned follow-up. Due-today and overdue rows act as your in-app notification list.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => navigate(-1)}
+            className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            Back
+          </button>
+        </div>
 
         <div className="mt-5 flex flex-wrap gap-3 text-sm">
           <div className="rounded-2xl bg-amber-50 px-4 py-3 text-amber-800">{summary.dueTodayCount} due today</div>

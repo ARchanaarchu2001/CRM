@@ -5,6 +5,7 @@ import AgentBatchPage from './pages/AgentBatchPage';
 import AnalystDashboard from './pages/AnalystDashboard';
 import AnalystDatasetPage from './pages/AnalystDatasetPage';
 import AgentPipelinePage from './pages/AgentPipelinePage';
+import AgentQueuePage from './pages/AgentQueuePage';
 import DashboardHome from './pages/DashboardHome';
 import LeadSettingsPage from './pages/LeadSettingsPage';
 import LoginPage from './pages/LoginPage';
@@ -62,6 +63,7 @@ function App() {
                 <Route path="/agent-dash" element={<AgentDashboard />} />
                 <Route path="/agent-dash/:batchId" element={<AgentBatchPage />} />
                 <Route path="/agent-pipeline" element={<AgentPipelinePage />} />
+                <Route path="/agent-queue/:queueType" element={<AgentQueuePage />} />
               </Route>
 
             </Route>

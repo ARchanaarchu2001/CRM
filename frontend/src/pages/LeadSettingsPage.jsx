@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { fetchLeadMetadata, updateRemarkConfig } from '../api/leads.js';
 
 const createInitialRemarkState = (configs = []) =>
@@ -18,6 +19,7 @@ const createInitialRemarkState = (configs = []) =>
   }, {});
 
 const LeadSettingsPage = () => {
+  const navigate = useNavigate();
   const [products, setProducts] = useState([]);
   const [selectedProduct, setSelectedProduct] = useState('p2p');
   const [remarkState, setRemarkState] = useState({});
@@ -98,17 +100,26 @@ const LeadSettingsPage = () => {
               Manage product-specific remark options here. Agents will only be able to select from these lists.
             </p>
           </div>
-          <select
-            value={selectedProduct}
-            onChange={(event) => setSelectedProduct(event.target.value)}
-            className="rounded-xl border border-slate-300 px-3 py-2 text-sm"
-          >
-            {products.map((product) => (
-              <option key={product} value={product}>
-                {product.toUpperCase()}
-              </option>
-            ))}
-          </select>
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={() => navigate(-1)}
+              className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              Back
+            </button>
+            <select
+              value={selectedProduct}
+              onChange={(event) => setSelectedProduct(event.target.value)}
+              className="rounded-xl border border-slate-300 px-3 py-2 text-sm"
+            >
+              {products.map((product) => (
+                <option key={product} value={product}>
+                  {product.toUpperCase()}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
         <div className="mt-6 grid gap-4">
