@@ -8,6 +8,7 @@ import {
   getMyPipelineSummary,
   getAnalystLeads,
   getLeadMetadata,
+  getTeamLeadConversionOverview,
   getMyAssignments,
   getUploadMiddleware,
   hideAssignmentBatch,
@@ -26,6 +27,11 @@ router.use(protect);
 router.get('/metadata', authorizeRoles(ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN), getLeadMetadata);
 router.get('/analyst/batches', authorizeRoles(ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN), getAnalystBatches);
 router.get('/analyst', authorizeRoles(ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN), getAnalystLeads);
+router.get(
+  '/team-lead/conversion',
+  authorizeRoles(ROLES.TEAM_LEAD, ROLES.SUPER_ADMIN),
+  getTeamLeadConversionOverview
+);
 router.post(
   '/preview',
   authorizeRoles(ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN),

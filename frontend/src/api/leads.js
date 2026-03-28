@@ -56,6 +56,8 @@ export const fetchAnalystBatches = async (params) => {
 
 export const deleteAnalystBatch = async (importBatchId) => {
   const response = await axiosPrivate.delete(`/leads/analyst/batches/${importBatchId}`);
+export const fetchTeamLeadConversionOverview = async (params) => {
+  const response = await axiosPrivate.get('/leads/team-lead/conversion', { params });
   return response.data;
 };
 

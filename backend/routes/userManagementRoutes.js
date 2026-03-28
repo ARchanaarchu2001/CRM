@@ -3,7 +3,14 @@ import {
   createUserByAdmin,
   createAgentByTeamLead,
   getAllUsersForAdmin,
+  getAgentPerformanceDetail,
+  getTeams,
+  getSuperAdminDashboard,
+  getTeamLeadDashboard,
   getTeamLeadAgents,
+  moveAgentToTeam,
+  reactivateUser,
+  removeAgentFromTeam,
   getUserById,
   updateUser,
   deactivateUser
@@ -34,6 +41,18 @@ router.get(
   getAllUsersForAdmin
 );
 
+router.get(
+  '/teams',
+  authorizeRoles(ROLES.SUPER_ADMIN),
+  getTeams
+);
+
+router.get(
+  '/dashboard/super-admin',
+  authorizeRoles(ROLES.SUPER_ADMIN),
+  getSuperAdminDashboard
+);
+
 
 // =========================================================
 // TEAM LEAD ROUTES
@@ -49,6 +68,18 @@ router.get(
   '/team-lead/agents',
   authorizeRoles(ROLES.TEAM_LEAD),
   getTeamLeadAgents
+);
+
+router.get(
+  '/dashboard/team-lead',
+  authorizeRoles(ROLES.TEAM_LEAD),
+  getTeamLeadDashboard
+);
+
+router.get(
+  '/dashboard/agents/:agentId',
+  authorizeRoles(ROLES.SUPER_ADMIN, ROLES.TEAM_LEAD),
+  getAgentPerformanceDetail
 );
 
 
@@ -72,6 +103,24 @@ router.patch(
   '/:id/deactivate',
   authorizeRoles(ROLES.SUPER_ADMIN, ROLES.TEAM_LEAD),
   deactivateUser
+);
+
+router.patch(
+  '/:id/reactivate',
+  authorizeRoles(ROLES.SUPER_ADMIN, ROLES.TEAM_LEAD),
+  reactivateUser
+);
+
+router.patch(
+  '/:id/move-team',
+  authorizeRoles(ROLES.SUPER_ADMIN),
+  moveAgentToTeam
+);
+
+router.patch(
+  '/:id/remove-from-team',
+  authorizeRoles(ROLES.SUPER_ADMIN, ROLES.TEAM_LEAD),
+  removeAgentFromTeam
 );
 
 export default router;

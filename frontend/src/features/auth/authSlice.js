@@ -1,5 +1,6 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import { loginAPI, logoutAPI, fetchMeAPI, refreshTokenAPI } from './authApi.js';
+import { setAuthToken, removeAuthToken, getAuthToken } from '../../utils/localStorage.js';
 
 // Async Thunks
 export const loginUser = createAsyncThunk(
@@ -57,10 +58,11 @@ export const refreshToken = createAsyncThunk(
 const initialState = {
   user: null,
   role: null,
-  accessToken: null,
+  accessToken: getAuthToken(), // Initialize immediately if available
   isAuthenticated: false,
   status: 'idle', // 'idle' | 'loading' | 'succeeded' | 'failed'
   error: null,
+  sessionNotice: null,
 };
 
 const authSlice = createSlice({
@@ -72,17 +74,33 @@ const authSlice = createSlice({
       state.role = action.payload.user?.role || null;
       state.accessToken = action.payload.accessToken;
       state.isAuthenticated = true;
+      state.error = null;
+      state.sessionNotice = null;
+
+      if (action.payload.accessToken) {
+        setAuthToken(action.payload.accessToken);
+      }
     },
-    logoutLocally: (state) => {
+    logoutLocally: (state, action) => {
       state.user = null;
       state.role = null;
       state.accessToken = null;
       state.isAuthenticated = false;
       state.status = 'idle';
       state.error = null;
+      state.sessionNotice = action.payload?.notice || null;
+      removeAuthToken();
+    },
+    restoreAuthFromStorage: (state) => {
+      const token = getAuthToken();
+      if (token) {
+        state.accessToken = token;
+        state.isAuthenticated = true; // Temporary trust until fetchMe resolves
+      }
     },
     clearError: (state) => {
       state.error = null;
+      state.sessionNotice = null;
     }
   },
   extraReducers: (builder) => {
@@ -91,6 +109,7 @@ const authSlice = createSlice({
       .addCase(loginUser.pending, (state) => {
         state.status = 'loading';
         state.error = null;
+        state.sessionNotice = null;
       })
       .addCase(loginUser.fulfilled, (state, action) => {
         state.status = 'succeeded';
@@ -98,6 +117,8 @@ const authSlice = createSlice({
         state.user = action.payload.user;
         state.role = action.payload.user.role;
         state.accessToken = action.payload.accessToken;
+        state.sessionNotice = null;
+        setAuthToken(action.payload.accessToken);
       })
       .addCase(loginUser.rejected, (state, action) => {
         state.status = 'failed';
@@ -112,6 +133,9 @@ const authSlice = createSlice({
         state.accessToken = null;
         state.isAuthenticated = false;
         state.status = 'idle';
+        state.error = null;
+        state.sessionNotice = null;
+        removeAuthToken();
       })
       
       // Fetch Me
@@ -122,7 +146,8 @@ const authSlice = createSlice({
         state.status = 'succeeded';
         state.user = action.payload.user;
         state.role = action.payload.user.role;
-        state.isAuthenticated = true; 
+        state.isAuthenticated = true;
+        state.sessionNotice = null;
       })
       .addCase(fetchMe.rejected, (state, action) => {
         state.status = 'failed';
@@ -137,6 +162,8 @@ const authSlice = createSlice({
         state.status = 'succeeded';
         state.accessToken = action.payload.accessToken;
         state.isAuthenticated = true;
+        state.sessionNotice = null;
+        setAuthToken(action.payload.accessToken);
       })
       .addCase(refreshToken.rejected, (state, action) => {
         state.status = 'failed';
@@ -145,9 +172,10 @@ const authSlice = createSlice({
         state.user = null;
         state.role = null;
         state.accessToken = null;
+        removeAuthToken();
       });
   },
 });
 
-export const { setCredentials, logoutLocally, clearError } = authSlice.actions;
+export const { setCredentials, logoutLocally, restoreAuthFromStorage, clearError } = authSlice.actions;
 export default authSlice.reducer;

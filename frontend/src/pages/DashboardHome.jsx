@@ -5,7 +5,11 @@ import { useSelector } from 'react-redux';
 const DashboardHome = () => {
   const { role } = useSelector((state) => state.auth);
 
-  if (role === 'super_admin' || role === 'data_analyst') {
+  if (role === 'super_admin') {
+    return <Navigate to="/admin-dash" replace />;
+  }
+
+  if (role === 'data_analyst') {
     return <Navigate to="/analyst-dash" replace />;
   }
 

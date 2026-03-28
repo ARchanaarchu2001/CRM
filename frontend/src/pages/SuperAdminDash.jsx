@@ -1,37 +1,193 @@
-import React, { useState, useEffect } from 'react';
-import { useDispatch, useSelector } from 'react-redux';
-import { getAllUsersForAdmin, deactivateUser, resetState } from '../features/users/userManagementSlice';
-import CreateUserForm from '../components/users/CreateUserForm';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useSelector } from 'react-redux';
+import { useNavigate } from 'react-router-dom';
+import CreateUserForm from '../components/users/CreateUserForm.jsx';
+import DateFilterBar from '../components/dashboard/DateFilterBar.jsx';
+import KpiCardGrid from '../components/dashboard/KpiCardGrid.jsx';
+import TeamComparisonChart from '../components/dashboard/TeamComparisonChart.jsx';
+import AllAgentDialsChart from '../components/dashboard/AllAgentDialsChart.jsx';
+import AgentSubmissionLeaderboard from '../components/dashboard/AgentSubmissionLeaderboard.jsx';
+import AgentAnalyticsTable from '../components/dashboard/AgentAnalyticsTable.jsx';
+import MoveAgentToTeamModal from '../components/dashboard/MoveAgentToTeamModal.jsx';
+import SelectedAgentActionsPanel from '../components/dashboard/SelectedAgentActionsPanel.jsx';
+import {
+  deactivateDashboardUser,
+  fetchTeams,
+  fetchSuperAdminDashboard,
+  moveDashboardUserToTeam,
+  reactivateDashboardUser,
+  removeDashboardUserFromTeam,
+} from '../api/dashboard.js';
+import { socket, connectSocket } from '../utils/socketClient.js';
+import { buildDashboardParams, getDefaultDashboardFilter, getFilterBadgeLabel } from '../utils/dashboard.js';
 
 const SuperAdminDash = () => {
+  const navigate = useNavigate();
   const [showCreateForm, setShowCreateForm] = useState(false);
-  
-  const dispatch = useDispatch();
-  const { users, isLoading, isError, message, isSuccess } = useSelector(
-    (state) => state.userManagement || {}
-  );
-  
-  const [deactivatingId, setDeactivatingId] = useState(null);
+  const [filter, setFilter] = useState(getDefaultDashboardFilter);
+  const [dashboard, setDashboard] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [actionLoadingKey, setActionLoadingKey] = useState(null);
+  const [banner, setBanner] = useState('');
+  const [teams, setTeams] = useState([]);
+  const [selectedAgent, setSelectedAgent] = useState(null);
+  const [isMoveModalOpen, setIsMoveModalOpen] = useState(false);
+  const [isMoveSubmitting, setIsMoveSubmitting] = useState(false);
 
-  useEffect(() => {
-    dispatch(getAllUsersForAdmin());
-  }, [dispatch]);
+  const { isSuccess, message } = useSelector((state) => state.userManagement || {});
+  const params = useMemo(() => buildDashboardParams(filter), [filter]);
 
-  // Clean up success messages occasionally to avoid lingering banners
-  useEffect(() => {
-    if (isSuccess && message === 'User deactivated successfully') {
-      const timer = setTimeout(() => {
-        dispatch(resetState());
-      }, 3000);
-      return () => clearTimeout(timer);
+  const loadDashboard = async () => {
+    setIsLoading(true);
+    setError('');
+
+    try {
+      const response = await fetchSuperAdminDashboard(params);
+      setDashboard(response.dashboard);
+      setSelectedAgent((current) => {
+        if (!response.dashboard?.agentTable?.length) {
+          return null;
+        }
+
+        if (!current) {
+          return response.dashboard.agentTable[0];
+        }
+
+        return response.dashboard.agentTable.find((agent) => agent.agentId === current.agentId) || response.dashboard.agentTable[0];
+      });
+    } catch (loadError) {
+      setError(loadError.response?.data?.message || 'Failed to load super admin dashboard');
+    } finally {
+      setIsLoading(false);
     }
-  }, [isSuccess, message, dispatch]);
+  };
 
-  const handleDeactivate = async (id, name) => {
-    if (window.confirm(`Are you absolutely sure you want to deactivate ${name}?`)) {
-      setDeactivatingId(id);
-      await dispatch(deactivateUser(id));
-      setDeactivatingId(null);
+  useEffect(() => {
+    loadDashboard();
+  }, [filter.range, filter.from, filter.to]);
+
+  useEffect(() => {
+    if (isSuccess && message) {
+      loadDashboard();
+    }
+  }, [isSuccess, message]);
+
+  useEffect(() => {
+    const loadTeams = async () => {
+      try {
+        const response = await fetchTeams();
+        setTeams(response.data || []);
+      } catch (loadError) {
+        setBanner(loadError.response?.data?.message || 'Failed to load teams');
+      }
+    };
+
+    loadTeams();
+  }, [isSuccess, message]);
+
+  useEffect(() => {
+    connectSocket();
+    const refreshDashboard = () => {
+      loadDashboard();
+    };
+
+    socket.on('agentMetricsUpdated', refreshDashboard);
+
+    return () => {
+      socket.off('agentMetricsUpdated', refreshDashboard);
+    };
+  }, [filter.range, filter.from, filter.to]);
+
+  const handleFilterChange = (updates) => {
+    setFilter((current) => ({ ...current, ...updates }));
+  };
+
+  const handleViewDetails = (agentRow) => {
+    const searchParams = new URLSearchParams(params);
+    navigate(`/agent-performance/${agentRow.agentId}?${searchParams.toString()}`, {
+      state: { from: '/admin-dash' },
+    });
+  };
+
+  const handleToggleStatus = async (agentRow) => {
+    const actionLabel = agentRow.isActive ? 'deactivate' : 'activate';
+    if (!window.confirm(`Are you sure you want to ${actionLabel} ${agentRow.agentName}?`)) {
+      return;
+    }
+
+    setActionLoadingKey(`status-${agentRow.agentId}`);
+    setBanner('');
+
+    try {
+      if (agentRow.isActive) {
+        await deactivateDashboardUser(agentRow.agentId);
+        setBanner(`${agentRow.agentName} was deactivated successfully.`);
+      } else {
+        await reactivateDashboardUser(agentRow.agentId);
+        setBanner(`${agentRow.agentName} was activated successfully.`);
+      }
+      await loadDashboard();
+    } catch (statusError) {
+      setBanner(statusError.response?.data?.message || `Failed to ${actionLabel} agent`);
+    } finally {
+      setActionLoadingKey(null);
+    }
+  };
+
+  const handleRemoveFromTeam = async (agentRow) => {
+    if (!window.confirm(`Remove ${agentRow.agentName} completely from the team?`)) {
+      return;
+    }
+
+    setActionLoadingKey(`remove-${agentRow.agentId}`);
+    setBanner('');
+
+    try {
+      await removeDashboardUserFromTeam(agentRow.agentId);
+      setBanner(`${agentRow.agentName} was removed from the team.`);
+      await loadDashboard();
+    } catch (removeError) {
+      setBanner(removeError.response?.data?.message || 'Failed to remove agent from team');
+    } finally {
+      setActionLoadingKey(null);
+    }
+  };
+
+  const handleOpenMoveModal = (agentRow) => {
+    setSelectedAgent(agentRow);
+    setIsMoveModalOpen(true);
+  };
+
+  const handleCloseMoveModal = () => {
+    if (isMoveSubmitting) {
+      return;
+    }
+
+    setIsMoveModalOpen(false);
+    setSelectedAgent(null);
+  };
+
+  const handleMoveToTeam = async (teamId) => {
+    if (!selectedAgent) {
+      return;
+    }
+
+    setIsMoveSubmitting(true);
+    setActionLoadingKey(`move-${selectedAgent.agentId}`);
+    setBanner('');
+
+    try {
+      const response = await moveDashboardUserToTeam(selectedAgent.agentId, teamId);
+      setBanner(response.message || `${selectedAgent.agentName} was moved successfully.`);
+      setIsMoveModalOpen(false);
+      setSelectedAgent(null);
+      await Promise.all([loadDashboard(), fetchTeams().then((teamResponse) => setTeams(teamResponse.data || []))]);
+    } catch (moveError) {
+      setBanner(moveError.response?.data?.message || 'Failed to move agent to the selected team');
+    } finally {
+      setIsMoveSubmitting(false);
+      setActionLoadingKey(null);
     }
   };
 
@@ -39,33 +195,19 @@ const SuperAdminDash = () => {
     <div className="space-y-6 max-w-7xl mx-auto py-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-5">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Super Admin Dashboard</h1>
-          <p className="mt-1 text-sm text-slate-500">Manage all system users entirely.</p>
+          <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Super Admin Performance Dashboard</h1>
+          <p className="mt-1 text-sm text-slate-500">
+            Compare team output, spot top dialers, and track system-wide submissions from one command view.
+          </p>
         </div>
-        
+
         <button
           onClick={() => setShowCreateForm(!showCreateForm)}
           className={`flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 ${
-            showCreateForm 
-              ? 'bg-slate-500 hover:bg-slate-600 focus:ring-slate-500'
-              : 'bg-indigo-600 hover:bg-indigo-700 focus:ring-indigo-500'
+            showCreateForm ? 'bg-slate-500 hover:bg-slate-600 focus:ring-slate-500' : 'bg-indigo-600 hover:bg-indigo-700 focus:ring-indigo-500'
           }`}
         >
-          {showCreateForm ? (
-            <>
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-              </svg>
-              Close Form
-            </>
-          ) : (
-            <>
-              <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
-              </svg>
-              Create New User
-            </>
-          )}
+          {showCreateForm ? 'Close Form' : 'Create New User'}
         </button>
       </div>
 
@@ -75,107 +217,82 @@ const SuperAdminDash = () => {
         </div>
       )}
 
-      {/* Global User List */}
-      <div className="mx-auto rounded-xl bg-white p-6 shadow-md border border-slate-200">
-        <div className="mb-6 flex items-center justify-between border-b border-slate-200 pb-4">
-          <div>
-            <h2 className="text-xl font-bold text-slate-800">All System Users</h2>
-            <p className="text-sm text-slate-500">Complete directory of all registered personnel.</p>
+      <section className="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(22rem,0.85fr)]">
+        <div className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="mb-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Dashboard Filters</p>
+            <h2 className="mt-2 text-lg font-semibold text-slate-900">Global Dashboard Controls</h2>
+            <p className="mt-1 text-sm text-slate-500">Filter the entire CRM view without crowding the performance table with admin actions.</p>
           </div>
-          <div className="text-sm font-medium text-slate-600 bg-slate-100 px-3 py-1 rounded-full border border-slate-200">
-            Total: {users?.length || 0}
-          </div>
+          <DateFilterBar filter={filter} onChange={handleFilterChange} isLoading={isLoading} />
         </div>
 
-        {isSuccess && message === 'User deactivated successfully' && (
-          <div className="mb-6 rounded-md bg-green-50 p-4 border border-green-200">
-            <p className="text-sm font-medium text-green-800">{message}</p>
+        <SelectedAgentActionsPanel
+          selectedAgent={selectedAgent}
+          actionLoadingKey={actionLoadingKey}
+          onViewDetails={handleViewDetails}
+          onToggleStatus={handleToggleStatus}
+          onMoveToTeam={handleOpenMoveModal}
+          onRemoveFromTeam={handleRemoveFromTeam}
+        />
+      </section>
+
+      {banner && (
+        <div className="rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm font-medium text-indigo-800">
+          {banner}
+        </div>
+      )}
+
+      {error ? (
+        <div className="rounded-3xl border border-rose-200 bg-rose-50 p-6 text-rose-700">{error}</div>
+      ) : isLoading && !dashboard ? (
+        <div className="rounded-3xl border border-slate-200 bg-white p-10 text-center text-slate-500 shadow-sm">
+          Loading global analytics...
+        </div>
+      ) : (
+        <>
+          <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Current Scope</p>
+                <h2 className="mt-2 text-xl font-semibold text-slate-900">Global Overview</h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  Showing {getFilterBadgeLabel(dashboard?.filter)} performance for all active agents in the system.
+                </p>
+              </div>
+              <span className="rounded-full bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700">
+                {dashboard?.agentTable?.length || 0} active agents
+              </span>
+            </div>
           </div>
-        )}
 
-        {isError && message && (
-          <div className="mb-6 rounded-md bg-red-50 p-4 border border-red-200">
-            <p className="text-sm font-medium text-red-800">{message}</p>
+          <KpiCardGrid kpis={dashboard?.kpis || []} />
+
+          <TeamComparisonChart data={dashboard?.charts?.teamComparison || []} />
+
+          <div className="grid gap-6 xl:grid-cols-2">
+            <AllAgentDialsChart data={dashboard?.charts?.agentDials || []} />
+            <AgentSubmissionLeaderboard data={dashboard?.charts?.agentSubmissions || []} />
           </div>
-        )}
 
-        {isLoading && !deactivatingId && !showCreateForm ? (
-          <div className="flex justify-center py-12">
-            <div className="h-8 w-8 animate-spin rounded-full border-4 border-slate-200 border-t-indigo-600"></div>
-          </div>
-        ) : users?.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-12 text-slate-500 bg-slate-50 rounded-lg border border-dashed border-slate-200">
-            <p className="font-medium text-slate-700">No users found</p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm text-slate-600">
-              <thead className="bg-slate-50 text-xs uppercase text-slate-700">
-                <tr>
-                  <th scope="col" className="px-6 py-3 font-semibold border-b border-slate-200 rounded-tl-lg">User</th>
-                  <th scope="col" className="px-6 py-3 font-semibold border-b border-slate-200">Role</th>
-                  <th scope="col" className="px-6 py-3 font-semibold border-b border-slate-200">Contact Details</th>
-                  <th scope="col" className="px-6 py-3 font-semibold border-b border-slate-200">Status</th>
-                  <th scope="col" className="px-6 py-3 font-semibold border-b border-slate-200 rounded-tr-lg text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {users?.map((user) => (
-                  <tr key={user._id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50 transition-colors">
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        {user.profilePhoto ? (
-                          <img 
-                            src={`/uploads/${user.profilePhoto}`} 
-                            alt={user.fullName} 
-                            className="h-10 w-10 rounded-full object-cover border border-slate-200"
-                          />
-                        ) : (
-                          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-200 text-slate-700 font-bold border border-slate-300">
-                            {user.fullName.charAt(0).toUpperCase()}
-                          </div>
-                        )}
-                        <div className="font-semibold text-slate-900">{user.fullName}</div>
-                      </div>
-                    </td>
+          <AgentAnalyticsTable
+            rows={dashboard?.agentTable || []}
+            selectedAgentId={selectedAgent?.agentId || ''}
+            onSelectAgent={setSelectedAgent}
+            onViewDetails={handleViewDetails}
+            showTeam
+          />
+        </>
+      )}
 
-                    <td className="px-6 py-4">
-                      <span className="inline-flex items-center rounded-full bg-indigo-50 px-2.5 py-0.5 text-xs font-medium text-indigo-700 border border-indigo-200 uppercase">
-                        {user.role.replace('_', ' ')}
-                      </span>
-                    </td>
-
-                    <td className="px-6 py-4">
-                      <div className="text-slate-800">{user.email}</div>
-                      {user.phoneNumber && <div className="text-xs text-slate-500 mt-0.5">{user.phoneNumber}</div>}
-                    </td>
-
-                    <td className="px-6 py-4">
-                      {user.isActive && !user.isDeleted ? (
-                        <span className="text-emerald-600 font-medium">Active</span>
-                      ) : (
-                        <span className="text-rose-600 font-medium">Inactive</span>
-                      )}
-                    </td>
-
-                    <td className="px-6 py-4 text-right">
-                      {user.role !== 'super_admin' && ( // Prevent admin self-delete logic loop simply here
-                        <button
-                          onClick={() => handleDeactivate(user._id, user.fullName)}
-                          disabled={deactivatingId === user._id}
-                          className="inline-flex items-center justify-center rounded bg-white px-3 py-1.5 text-xs font-medium text-red-600 shadow-sm border border-red-200 hover:bg-red-50 hover:border-red-300 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed transition"
-                        >
-                          {deactivatingId === user._id ? 'Removing...' : 'Deactivate'}
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+      <MoveAgentToTeamModal
+        isOpen={isMoveModalOpen}
+        agent={selectedAgent}
+        teams={teams}
+        isSubmitting={isMoveSubmitting}
+        onClose={handleCloseMoveModal}
+        onSubmit={handleMoveToTeam}
+      />
     </div>
   );
 };

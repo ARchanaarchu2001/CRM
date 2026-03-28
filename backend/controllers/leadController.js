@@ -7,6 +7,9 @@ import LeadImport from '../models/LeadImport.js';
 import ProductRemarkConfig from '../models/ProductRemarkConfig.js';
 import User from '../models/User.js';
 import { ROLES } from '../constants/roles.js';
+import { checkLeadWorkedActivity, checkIsLeadCleared, getCurrentDateString, calculateSingleAgentMetrics } from '../utils/leadMetrics.js';
+import { getIO } from '../utils/socket.js';
+import { resolveDateRange } from '../utils/dashboardAnalytics.js';
 
 const DEFAULT_PRODUCTS = ['mnp', 'p2p', 'fne', 'plus', 'general'];
 const DEFAULT_REMARKS = {
@@ -563,11 +566,11 @@ export const getAnalystLeads = asyncHandler(async (req, res) => {
   const leadIds = filteredLeads.map((lead) => lead._id);
   const assignments = leadIds.length
     ? await LeadAssignment.find({ lead: { $in: leadIds } })
-        .select(
-          'lead assignedAgentName status contactabilityStatus callAttempt1Date callAttempt2Date callingRemark interestedRemark notInterestedRemark agentNotes updatedAt'
-        )
-        .sort({ updatedAt: -1 })
-        .lean()
+      .select(
+        'lead assignedAgentName status contactabilityStatus callAttempt1Date callAttempt2Date callingRemark interestedRemark notInterestedRemark agentNotes updatedAt'
+      )
+      .sort({ updatedAt: -1 })
+      .lean()
     : [];
 
   const assignmentsByLeadId = assignments.reduce((accumulator, assignment) => {
@@ -736,17 +739,17 @@ export const getMyAssignments = asyncHandler(async (req, res) => {
 
   const filteredAssignments = search
     ? assignments.filter((assignment) => {
-        const contactNumber = assignment.lead?.contactNumber || '';
-        const name =
-          assignment.lead?.rawData?.NAME ||
-          assignment.lead?.rawData?.Name ||
-          assignment.lead?.rawData?.name ||
-          '';
-        return (
-          contactNumber.toLowerCase().includes(String(search).toLowerCase()) ||
-          String(name).toLowerCase().includes(String(search).toLowerCase())
-        );
-      })
+      const contactNumber = assignment.lead?.contactNumber || '';
+      const name =
+        assignment.lead?.rawData?.NAME ||
+        assignment.lead?.rawData?.Name ||
+        assignment.lead?.rawData?.name ||
+        '';
+      return (
+        contactNumber.toLowerCase().includes(String(search).toLowerCase()) ||
+        String(name).toLowerCase().includes(String(search).toLowerCase())
+      );
+    })
     : assignments;
 
   const remarkConfigMap = Object.fromEntries(
@@ -1001,7 +1004,22 @@ export const updateAssignmentOutcome = asyncHandler(async (req, res) => {
     pipelineNotes,
   } = req.body;
 
-  assignment.status = status || assignment.status;
+  const updates = {
+    status,
+    contactabilityStatus,
+    callAttempt1Date,
+    callAttempt2Date,
+    callingRemark,
+    interestedRemark,
+    notInterestedRemark,
+    agentNotes,
+  };
+
+  const isWorked = checkLeadWorkedActivity(assignment, updates);
+  const nextStatus = status ?? assignment.status;
+  const previousStatus = assignment.status;
+
+  assignment.status = nextStatus || assignment.status;
   assignment.contactabilityStatus = contactabilityStatus ?? assignment.contactabilityStatus;
   assignment.callAttempt1Date = callAttempt1Date ?? assignment.callAttempt1Date;
   assignment.callAttempt2Date = callAttempt2Date ?? assignment.callAttempt2Date;
@@ -1017,10 +1035,178 @@ export const updateAssignmentOutcome = asyncHandler(async (req, res) => {
   assignment.pipelineDisplayContact = pipelineDisplayContact ?? assignment.pipelineDisplayContact;
   assignment.pipelineNotes = pipelineNotes ?? assignment.pipelineNotes;
 
+  if (nextStatus === 'submitted' && previousStatus !== 'submitted') {
+    assignment.submittedAt = assignment.submittedAt || new Date();
+  }
+
+  if (nextStatus === 'activated' && previousStatus !== 'activated') {
+    assignment.activatedAt = new Date();
+    assignment.submittedAt = assignment.submittedAt || new Date();
+  }
+
+  if (checkIsLeadCleared(assignment)) {
+    assignment.workedDates = [];
+  } else if (isWorked) {
+    const today = getCurrentDateString();
+    if (!assignment.workedDates) {
+      assignment.workedDates = [];
+    }
+    if (!assignment.workedDates.includes(today)) {
+      assignment.workedDates.push(today);
+    }
+  }
+
   await assignment.save();
+
+  try {
+    const updatedMetrics = await calculateSingleAgentMetrics(assignment.agent);
+    getIO().emit('agentMetricsUpdated', {
+      agentId: assignment.agent.toString(),
+      dailyDialsCount: updatedMetrics.dailyDialsCount,
+      pendingLeadsCount: updatedMetrics.pendingLeadsCount,
+    });
+  } catch (error) {
+    console.error("Failed to emit agentMetricsUpdated", error);
+  }
 
   res.status(200).json({
     message: 'Assigned lead updated successfully',
     assignment,
+  });
+});
+
+export const getTeamLeadConversionOverview = asyncHandler(async (req, res) => {
+  if (![ROLES.TEAM_LEAD, ROLES.SUPER_ADMIN].includes(req.user.role)) {
+    res.status(403);
+    throw new Error('Forbidden');
+  }
+
+  let rangeInfo;
+  try {
+    rangeInfo = resolveDateRange(req.query);
+  } catch (error) {
+    res.status(400);
+    throw error;
+  }
+
+  const agentFilters =
+    req.user.role === ROLES.TEAM_LEAD
+      ? { role: ROLES.AGENT, teamLead: req.user._id, isDeleted: false }
+      : { role: ROLES.AGENT, isDeleted: false };
+
+  const agents = await User.find(agentFilters)
+    .select('fullName profilePhoto assignedTeam')
+    .sort({ fullName: 1 })
+    .lean();
+
+  const agentIds = agents.map((agent) => agent._id);
+
+  if (!agentIds.length) {
+    return res.status(200).json({
+      success: true,
+      overview: {
+        filter: rangeInfo,
+        products: [],
+        agents: [],
+      },
+    });
+  }
+
+  const assignments = await LeadAssignment.find({ agent: { $in: agentIds } })
+    .select('agent product status createdAt submittedAt')
+    .lean();
+
+  const agentMap = new Map(
+    agents.map((agent) => [
+      String(agent._id),
+      {
+        agentId: String(agent._id),
+        agentName: agent.fullName,
+        profilePhoto: agent.profilePhoto || null,
+        teamName: agent.assignedTeam || 'Unassigned Team',
+        totalAssignedLeads: 0,
+        totalSubmissions: 0,
+        products: {},
+      },
+    ])
+  );
+
+  const productMap = new Map();
+
+  const isAssignmentInRange = (dateValue) => {
+    if (!dateValue) return false;
+    const parsed = new Date(dateValue);
+    return !Number.isNaN(parsed.getTime()) && parsed >= rangeInfo.fromDate && parsed <= rangeInfo.toDate;
+  };
+
+  for (const assignment of assignments) {
+    const agentId = String(assignment.agent);
+    const productKey = String(assignment.product || 'general').toLowerCase();
+    const agentRow = agentMap.get(agentId);
+
+    if (!agentRow) {
+      continue;
+    }
+
+    if (!productMap.has(productKey)) {
+      productMap.set(productKey, {
+        product: productKey,
+        label: productKey.toUpperCase(),
+        totalLeads: 0,
+        submissions: 0,
+      });
+    }
+
+    if (!agentRow.products[productKey]) {
+      agentRow.products[productKey] = {
+        totalLeads: 0,
+        submissions: 0,
+      };
+    }
+
+    if (isAssignmentInRange(assignment.createdAt)) {
+      agentRow.totalAssignedLeads += 1;
+      agentRow.products[productKey].totalLeads += 1;
+      productMap.get(productKey).totalLeads += 1;
+    }
+
+    const isSubmittedInRange =
+      String(assignment.status || '').toLowerCase() === 'submitted' && isAssignmentInRange(assignment.submittedAt || assignment.createdAt);
+
+    if (isSubmittedInRange) {
+      agentRow.totalSubmissions += 1;
+      agentRow.products[productKey].submissions += 1;
+      productMap.get(productKey).submissions += 1;
+    }
+  }
+
+  const productKeys = Array.from(productMap.keys()).sort();
+
+  const agentsOverview = Array.from(agentMap.values())
+    .map((agent) => ({
+      ...agent,
+      products: productKeys.map((productKey) => ({
+        product: productKey,
+        label: productKey.toUpperCase(),
+        totalLeads: agent.products[productKey]?.totalLeads || 0,
+        submissions: agent.products[productKey]?.submissions || 0,
+      })),
+    }))
+    .sort((left, right) => {
+      if (right.totalSubmissions !== left.totalSubmissions) {
+        return right.totalSubmissions - left.totalSubmissions;
+      }
+      return right.totalAssignedLeads - left.totalAssignedLeads;
+    });
+
+  const productsOverview = productKeys.map((productKey) => productMap.get(productKey));
+
+  res.status(200).json({
+    success: true,
+    overview: {
+      filter: rangeInfo,
+      products: productsOverview,
+      agents: agentsOverview,
+    },
   });
 });

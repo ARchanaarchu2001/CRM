@@ -44,6 +44,14 @@ const leadAssignmentSchema = new mongoose.Schema(
       enum: ['', 'submitted', 'activated', 'new', 'in_progress', 'follow_up', 'completed'],
       default: '',
     },
+    submittedAt: {
+      type: Date,
+      default: null,
+    },
+    activatedAt: {
+      type: Date,
+      default: null,
+    },
     contactabilityStatus: {
       type: String,
       default: '',
@@ -116,6 +124,11 @@ const leadAssignmentSchema = new mongoose.Schema(
       type: String,
       default: '',
       trim: true,
+    },
+    workedDates: {
+      type: [String],
+      default: [],
+      index: true,
     },
   },
   {

@@ -94,6 +94,14 @@ const userManagementSlice = createSlice({
       state.isSuccess = false;
       state.message = '';
     },
+    updateAgentMetricsDirectly: (state, action) => {
+      const { agentId, dailyDialsCount, pendingLeadsCount } = action.payload;
+      const agentIndex = state.users.findIndex(u => u._id === agentId);
+      if (agentIndex !== -1) {
+        state.users[agentIndex].dailyDialsCount = dailyDialsCount;
+        state.users[agentIndex].pendingLeadsCount = pendingLeadsCount;
+      }
+    }
   },
   extraReducers: (builder) => {
     builder
@@ -180,5 +188,5 @@ const userManagementSlice = createSlice({
   },
 });
 
-export const { resetState } = userManagementSlice.actions;
+export const { resetState, updateAgentMetricsDirectly } = userManagementSlice.actions;
 export default userManagementSlice.reducer;

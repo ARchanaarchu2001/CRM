@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { createUserByAdmin, resetState } from '../../features/users/userManagementSlice';
+import { fetchTeams } from '../../api/dashboard.js';
 
 const ROLES = [
   { value: 'data_analyst', label: 'Data Analyst' },
@@ -23,11 +24,16 @@ const CreateUserForm = () => {
     role: '',
     phoneNumber: '',
     employeeId: '',
+    teamName: '',
+    teamId: '',
   });
 
   const [profilePhoto, setProfilePhoto] = useState(null);
   const [photoPreview, setPhotoPreview] = useState(null);
   const [showPassword, setShowPassword] = useState(false);
+  const [teams, setTeams] = useState([]);
+  const [teamsLoading, setTeamsLoading] = useState(false);
+  const [teamError, setTeamError] = useState('');
 
   useEffect(() => {
     if (isSuccess) {
@@ -38,6 +44,8 @@ const CreateUserForm = () => {
         role: '',
         phoneNumber: '',
         employeeId: '',
+        teamName: '',
+        teamId: '',
       });
       setProfilePhoto(null);
       setPhotoPreview(null);
@@ -50,9 +58,40 @@ const CreateUserForm = () => {
     }
   }, [isSuccess, dispatch]);
 
+  useEffect(() => {
+    const loadTeams = async () => {
+      setTeamsLoading(true);
+      setTeamError('');
+
+      try {
+        const response = await fetchTeams();
+        setTeams(response.data || []);
+      } catch (error) {
+        setTeamError(error.response?.data?.message || 'Failed to load teams');
+      } finally {
+        setTeamsLoading(false);
+      }
+    };
+
+    loadTeams();
+  }, []);
+
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
+    setFormData((prev) => {
+      const nextState = { ...prev, [name]: value };
+
+      if (name === 'role') {
+        if (value !== 'team_lead') {
+          nextState.teamName = '';
+        }
+        if (value !== 'agent') {
+          nextState.teamId = '';
+        }
+      }
+
+      return nextState;
+    });
   };
 
   const handleFileChange = (e) => {
@@ -72,6 +111,10 @@ const CreateUserForm = () => {
   const handleSubmit = (e) => {
     e.preventDefault();
 
+    if (formData.role === 'team_lead' && !formData.teamName.trim()) {
+      return;
+    }
+
     const submitData = new FormData();
     submitData.append('fullName', formData.fullName);
     submitData.append('email', formData.email);
@@ -80,6 +123,8 @@ const CreateUserForm = () => {
 
     if (formData.phoneNumber) submitData.append('phoneNumber', formData.phoneNumber);
     if (formData.employeeId) submitData.append('employeeId', formData.employeeId);
+    if (formData.role === 'team_lead') submitData.append('teamName', formData.teamName.trim());
+    if (formData.role === 'agent' && formData.teamId) submitData.append('teamId', formData.teamId);
     if (profilePhoto) submitData.append('profilePhoto', profilePhoto);
 
     dispatch(createUserByAdmin(submitData));
@@ -213,6 +258,47 @@ const CreateUserForm = () => {
               placeholder="EMP-001"
             />
           </div>
+
+          {formData.role === 'team_lead' && (
+            <div className="flex flex-col gap-1 sm:col-span-2">
+              <label className="text-sm font-medium text-slate-700">
+                Team Name <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                name="teamName"
+                required
+                value={formData.teamName}
+                onChange={handleInputChange}
+                className="rounded-lg border border-slate-300 p-2.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                placeholder="Phoenix Team"
+              />
+              <p className="text-xs text-slate-500">This becomes the primary team linked to the new Team Lead.</p>
+            </div>
+          )}
+
+          {formData.role === 'agent' && (
+            <div className="flex flex-col gap-1 sm:col-span-2">
+              <label className="text-sm font-medium text-slate-700">Assign Team (Optional)</label>
+              <select
+                name="teamId"
+                value={formData.teamId}
+                onChange={handleInputChange}
+                className="rounded-lg border border-slate-300 p-2.5 text-sm bg-white focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              >
+                <option value="">Create as unassigned agent</option>
+                {teams.map((team) => (
+                  <option key={team._id} value={team._id}>
+                    {team.name} - {team.teamLeadName}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-slate-500">
+                {teamsLoading ? 'Loading active teams...' : 'Choose a team now or move the agent later from the dashboard.'}
+              </p>
+              {teamError && <p className="text-xs text-rose-600">{teamError}</p>}
+            </div>
+          )}
 
         </div>
 

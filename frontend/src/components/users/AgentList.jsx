@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { getTeamLeadAgents, deactivateUser, resetState } from '../../features/users/userManagementSlice';
+import { getTeamLeadAgents, deactivateUser, resetState, updateAgentMetricsDirectly } from '../../features/users/userManagementSlice';
+import { socket, connectSocket } from '../../utils/socketClient';
 
 const AgentList = () => {
   const dispatch = useDispatch();
@@ -12,6 +13,17 @@ const AgentList = () => {
 
   useEffect(() => {
     dispatch(getTeamLeadAgents());
+
+    connectSocket();
+    const handleMetricsUpdate = (data) => {
+      dispatch(updateAgentMetricsDirectly(data));
+    };
+
+    socket.on('agentMetricsUpdated', handleMetricsUpdate);
+
+    return () => {
+      socket.off('agentMetricsUpdated', handleMetricsUpdate);
+    };
   }, [dispatch]);
 
   // Clean up success messages occasionally to avoid lingering banners
@@ -74,7 +86,7 @@ const AgentList = () => {
             <thead className="bg-slate-50 text-xs uppercase text-slate-700">
               <tr>
                 <th scope="col" className="px-6 py-3 font-semibold border-b border-slate-200 rounded-tl-lg">Agent</th>
-                <th scope="col" className="px-6 py-3 font-semibold border-b border-slate-200 text-center">Daily Leads</th>
+                <th scope="col" className="px-6 py-3 font-semibold border-b border-slate-200 text-center">Daily Dials</th>
                 <th scope="col" className="px-6 py-3 font-semibold border-b border-slate-200 text-center">Pending Leads</th>
                 <th scope="col" className="px-6 py-3 font-semibold border-b border-slate-200 rounded-tr-lg text-right">Actions</th>
               </tr>
@@ -104,10 +116,10 @@ const AgentList = () => {
                     </div>
                   </td>
 
-                  {/* Daily Leads Metric */}
+                  {/* Daily Dials Metric */}
                   <td className="px-6 py-4 text-center">
                     <span className="inline-flex items-center justify-center min-w-[3rem] font-bold text-slate-700 bg-slate-100 px-2.5 py-1 rounded-full border border-slate-200">
-                      {agent.dailyLeadsCount || 0}
+                      {agent.dailyDialsCount || 0}
                     </span>
                   </td>
 

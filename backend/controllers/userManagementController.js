@@ -1,7 +1,105 @@
 import asyncHandler from '../utils/asyncHandler.js';
 import User from '../models/User.js';
+import Team from '../models/Team.js';
+import TeamTransfer from '../models/TeamTransfer.js';
+import LeadAssignment from '../models/LeadAssignment.js';
 import { ROLES } from '../constants/roles.js';
-import { canCreateUser, canModifyOrDeleteUser, getSafeUserFetchScope } from '../constants/rolePermissions.js';
+import { canCreateUser, canModifyOrDeleteUser } from '../constants/rolePermissions.js';
+import {
+  buildAgentDetailAnalytics,
+  buildDashboardAnalytics,
+  resolveDateRange,
+} from '../utils/dashboardAnalytics.js';
+import { getCurrentDateString } from '../utils/leadMetrics.js';
+
+const normalizeTeamName = (value = '') => String(value).trim().replace(/\s+/g, ' ').toLowerCase();
+
+const sanitizeTeamName = (value = '') => String(value).trim().replace(/\s+/g, ' ');
+
+const TEAM_POPULATE = [
+  { path: 'teamLead', select: 'fullName assignedTeam' },
+  { path: 'team', select: 'name lead', populate: { path: 'lead', select: 'fullName assignedTeam' } },
+];
+
+const getCurrentTeamName = (user) => {
+  if (!user) return '';
+  return user.assignedTeam || user.team?.name || user.teamLead?.assignedTeam || '';
+};
+
+const formatTeamPayload = (teamDoc) => ({
+  _id: teamDoc._id,
+  name: teamDoc.name,
+  teamLeadId: teamDoc.lead?._id ? String(teamDoc.lead._id) : String(teamDoc.lead || ''),
+  teamLeadName: teamDoc.lead?.fullName || '',
+});
+
+const ensureTeamForLeadUser = async (leadUser, actorId = null) => {
+  if (!leadUser || leadUser.role !== ROLES.TEAM_LEAD) {
+    return null;
+  }
+
+  const cleanTeamName = sanitizeTeamName(leadUser.assignedTeam);
+  if (!cleanTeamName) {
+    return null;
+  }
+
+  let teamDoc = null;
+
+  if (leadUser.team) {
+    teamDoc = await Team.findById(leadUser.team);
+  }
+
+  if (!teamDoc) {
+    teamDoc = await Team.findOne({
+      $or: [
+        { lead: leadUser._id },
+        { normalizedName: normalizeTeamName(cleanTeamName) },
+      ],
+    });
+  }
+
+  if (!teamDoc) {
+    teamDoc = await Team.create({
+      name: cleanTeamName,
+      normalizedName: normalizeTeamName(cleanTeamName),
+      lead: leadUser._id,
+      createdBy: actorId,
+      updatedBy: actorId,
+    });
+  } else {
+    let shouldSaveTeam = false;
+    if (teamDoc.name !== cleanTeamName) {
+      teamDoc.name = cleanTeamName;
+      teamDoc.normalizedName = normalizeTeamName(cleanTeamName);
+      shouldSaveTeam = true;
+    }
+    if (String(teamDoc.lead) !== String(leadUser._id)) {
+      teamDoc.lead = leadUser._id;
+      shouldSaveTeam = true;
+    }
+    if (actorId) {
+      teamDoc.updatedBy = actorId;
+      shouldSaveTeam = true;
+    }
+    if (shouldSaveTeam) {
+      await teamDoc.save({ validateBeforeSave: false });
+    }
+  }
+
+  const shouldSyncLead =
+    String(leadUser.team || '') !== String(teamDoc._id) || leadUser.assignedTeam !== cleanTeamName;
+
+  if (shouldSyncLead) {
+    leadUser.team = teamDoc._id;
+    leadUser.assignedTeam = cleanTeamName;
+    if (actorId) {
+      leadUser.updatedBy = actorId;
+    }
+    await leadUser.save({ validateBeforeSave: false });
+  }
+
+  return teamDoc;
+};
 
 /**
  * @desc    Super Admin creates any role user
@@ -9,10 +107,14 @@ import { canCreateUser, canModifyOrDeleteUser, getSafeUserFetchScope } from '../
  * @access  Private/SuperAdmin
  */
 export const createUserByAdmin = asyncHandler(async (req, res) => {
-  const { fullName, email, password, role, phoneNumber, employeeId, assignedTeam } = req.body;
+  const { fullName, email, password, role, phoneNumber, employeeId, assignedTeam, teamId, teamName } = req.body;
   
   if (req.user.role !== ROLES.SUPER_ADMIN) {
     return res.status(403).json({ success: false, message: 'Forbidden: Super Admins only' });
+  }
+
+  if (!canCreateUser(req.user.role, role)) {
+    return res.status(403).json({ success: false, message: 'You do not have permission to create this role' });
   }
 
   const userExists = await User.findOne({ email });
@@ -20,21 +122,75 @@ export const createUserByAdmin = asyncHandler(async (req, res) => {
     return res.status(400).json({ success: false, message: 'User with this email already exists' });
   }
 
-  const newUser = await User.create({
-    fullName,
-    email,
-    password,
-    role,
-    phoneNumber,
-    employeeId,
-    assignedTeam,
-    createdBy: req.user._id,
-    profilePhoto: req.file ? req.file.filename : null, // Handle optionally based on your upload middleware
-  });
+  if (role === ROLES.TEAM_LEAD) {
+    const cleanTeamName = sanitizeTeamName(teamName);
+    const normalizedTeamName = normalizeTeamName(cleanTeamName);
 
-  const safeUser = newUser.toObject();
-  delete safeUser.password;
-  delete safeUser.refreshToken;
+    if (!cleanTeamName) {
+      return res.status(400).json({ success: false, message: 'Team Name is required when creating a Team Lead' });
+    }
+
+    const existingTeam = await Team.findOne({ normalizedName: normalizedTeamName });
+    if (existingTeam) {
+      return res.status(400).json({ success: false, message: 'A team with this name already exists' });
+    }
+  }
+
+  let selectedTeam = null;
+  if (role === ROLES.AGENT && teamId) {
+    selectedTeam = await Team.findById(teamId);
+    if (!selectedTeam) {
+      return res.status(404).json({ success: false, message: 'Selected team was not found' });
+    }
+  }
+
+  let newUser;
+
+  try {
+    newUser = await User.create({
+      fullName,
+      email,
+      password,
+      role,
+      phoneNumber,
+      employeeId,
+      assignedTeam:
+        role === ROLES.TEAM_LEAD
+          ? sanitizeTeamName(teamName)
+          : role === ROLES.AGENT && selectedTeam
+            ? selectedTeam.name
+            : assignedTeam || null,
+      team: role === ROLES.AGENT && selectedTeam ? selectedTeam._id : null,
+      teamLead: role === ROLES.AGENT && selectedTeam ? selectedTeam.lead : null,
+      createdBy: req.user._id,
+      updatedBy: req.user._id,
+      profilePhoto: req.file ? req.file.filename : null,
+    });
+
+    if (role === ROLES.TEAM_LEAD) {
+      const cleanTeamName = sanitizeTeamName(teamName);
+      const createdTeam = await Team.create({
+        name: cleanTeamName,
+        normalizedName: normalizeTeamName(cleanTeamName),
+        lead: newUser._id,
+        createdBy: req.user._id,
+        updatedBy: req.user._id,
+      });
+
+      newUser.team = createdTeam._id;
+      await newUser.save({ validateBeforeSave: false });
+    }
+  } catch (error) {
+    if (newUser?._id) {
+      await User.findByIdAndDelete(newUser._id);
+    }
+    return res.status(400).json({ success: false, message: error.message || 'Failed to create user' });
+  }
+
+  const safeUser = await User.findById(newUser._id)
+    .select('-password -refreshToken')
+    .populate(TEAM_POPULATE)
+    .lean();
 
   res.status(201).json({ success: true, data: safeUser });
 });
@@ -52,6 +208,13 @@ export const createAgentByTeamLead = asyncHandler(async (req, res) => {
     return res.status(403).json({ success: false, message: 'Forbidden: Team Leads only' });
   }
 
+  const currentLead = await User.findById(req.user._id).select('assignedTeam team role');
+  const currentLeadTeam = await ensureTeamForLeadUser(currentLead, req.user._id);
+
+  if (!currentLead?.assignedTeam || !currentLeadTeam?._id) {
+    return res.status(400).json({ success: false, message: 'Your team is not configured yet. Please contact Super Admin.' });
+  }
+
   const userExists = await User.findOne({ email });
   if (userExists) {
     return res.status(400).json({ success: false, message: 'User with this email already exists' });
@@ -63,20 +226,158 @@ export const createAgentByTeamLead = asyncHandler(async (req, res) => {
     email,
     password,
     role: ROLES.AGENT,
+    team: currentLeadTeam._id,
+    assignedTeam: currentLead.assignedTeam,
     teamLead: req.user._id,
     createdBy: req.user._id,
+    updatedBy: req.user._id,
     phoneNumber,
     employeeId,
     profilePhoto: req.file ? req.file.filename : null,
   });
 
-  const safeUser = newUser.toObject();
-  delete safeUser.password;
-  delete safeUser.refreshToken;
+  const safeUser = await User.findById(newUser._id)
+    .select('-password -refreshToken')
+    .populate(TEAM_POPULATE)
+    .lean();
 
   res.status(201).json({ success: true, data: safeUser });
 });
 
+const getManageableAgent = async ({ requester, targetUserId, allowUnassigned = false }) => {
+  const targetUser = await User.findById(targetUserId);
+
+  if (!targetUser || targetUser.role !== ROLES.AGENT) {
+    return null;
+  }
+
+  if (requester.role === ROLES.SUPER_ADMIN) {
+    return targetUser;
+  }
+
+  if (requester.role === ROLES.TEAM_LEAD) {
+    const belongsToRequester = String(targetUser.teamLead || '') === String(requester._id);
+    if (!belongsToRequester && !(allowUnassigned && !targetUser.teamLead)) {
+      return null;
+    }
+    return targetUser;
+  }
+
+  return null;
+};
+
+const getScopedAgentQuery = (currentUser) => {
+  if (currentUser.role === ROLES.TEAM_LEAD) {
+    return {
+      role: ROLES.AGENT,
+      teamLead: currentUser._id,
+      isDeleted: false,
+    };
+  }
+
+  if (currentUser.role === ROLES.SUPER_ADMIN) {
+    return {
+      role: ROLES.AGENT,
+      isDeleted: false,
+    };
+  }
+
+  return null;
+};
+
+const getScopedAgentsForDashboard = async (currentUser) => {
+  const query = getScopedAgentQuery(currentUser);
+  if (!query) {
+    return [];
+  }
+
+  return User.find(query)
+    .select('fullName email role profilePhoto assignedTeam team teamLead isActive isDeleted createdAt')
+    .populate(TEAM_POPULATE)
+    .sort({ fullName: 1 })
+    .lean();
+};
+
+const getAssignmentsForAgents = async (agentIds) => {
+  if (!agentIds.length) {
+    return [];
+  }
+
+  return LeadAssignment.find({ agent: { $in: agentIds } })
+    .select(
+      [
+        'agent',
+        'product',
+        'status',
+        'submittedAt',
+        'activatedAt',
+        'inPipeline',
+        'pipelineFollowUpDate',
+        'workedDates',
+        'createdAt',
+        'updatedAt',
+      ].join(' ')
+    )
+    .lean();
+};
+
+const getResolvedRangeInfo = (query, res) => {
+  try {
+    return resolveDateRange(query);
+  } catch (error) {
+    res.status(400);
+    throw error;
+  }
+};
+
+/**
+ * Helper to fetch and attach metrics for a list of agents
+ */
+const attachMetricsToAgents = async (agents) => {
+  if (!agents || agents.length === 0) return [];
+  
+  const agentIds = agents.map((a) => a._id);
+  const today = getCurrentDateString();
+
+  // Aggregate metrics for these specific agents
+  const metrics = await LeadAssignment.aggregate([
+    {
+      $match: { agent: { $in: agentIds } }
+    },
+    {
+      $group: {
+        _id: '$agent',
+        dailyDialsCount: {
+          $sum: {
+            $cond: [{ $in: [today, { $ifNull: ['$workedDates', []] }] }, 1, 0]
+          }
+        },
+        pendingLeadsCount: {
+          $sum: {
+            $cond: [
+              { $eq: [{ $size: { $ifNull: ['$workedDates', []] } }, 0] },
+              1, 
+              0
+            ]
+          }
+        }
+      }
+    }
+  ]);
+
+  const metricsMap = Object.fromEntries(
+    metrics.map(m => [m._id.toString(), {
+      dailyDialsCount: m.dailyDialsCount || 0,
+      pendingLeadsCount: m.pendingLeadsCount || 0
+    }])
+  );
+
+  return agents.map((agent) => {
+    const agentObj = agent.toObject ? agent.toObject() : agent;
+    const m = metricsMap[agentObj._id.toString()] || { dailyDialsCount: 0, pendingLeadsCount: 0 };
+    return { ...agentObj, ...m };
+  });
+};
 
 /**
  * @desc    Get all active users globally (Admin only)
@@ -89,8 +390,143 @@ export const getAllUsersForAdmin = asyncHandler(async (req, res) => {
   }
   
   const users = await User.find({ isDeleted: false }).select('-password -refreshToken').sort({ createdAt: -1 });
+  
+  const enrichedUsers = await attachMetricsToAgents(users);
 
-  res.status(200).json({ success: true, count: users.length, data: users });
+  res.status(200).json({ success: true, count: enrichedUsers.length, data: enrichedUsers });
+});
+
+export const getTeamLeadDashboard = asyncHandler(async (req, res) => {
+  if (req.user.role !== ROLES.TEAM_LEAD) {
+    return res.status(403).json({ success: false, message: 'Forbidden' });
+  }
+
+  const rangeInfo = getResolvedRangeInfo(req.query, res);
+  const agents = await getScopedAgentsForDashboard(req.user);
+  const assignments = await getAssignmentsForAgents(agents.map((agent) => agent._id));
+  const analytics = buildDashboardAnalytics({
+    agents,
+    assignments,
+    rangeInfo,
+    includeTeamComparison: false,
+  });
+
+  res.status(200).json({
+    success: true,
+    scope: 'team_lead',
+    dashboard: analytics,
+  });
+});
+
+export const getSuperAdminDashboard = asyncHandler(async (req, res) => {
+  if (req.user.role !== ROLES.SUPER_ADMIN) {
+    return res.status(403).json({ success: false, message: 'Forbidden' });
+  }
+
+  const rangeInfo = getResolvedRangeInfo(req.query, res);
+  const agents = await getScopedAgentsForDashboard(req.user);
+  const assignments = await getAssignmentsForAgents(agents.map((agent) => agent._id));
+  const analytics = buildDashboardAnalytics({
+    agents,
+    assignments,
+    rangeInfo,
+    includeTeamComparison: true,
+  });
+
+  res.status(200).json({
+    success: true,
+    scope: 'super_admin',
+    dashboard: analytics,
+  });
+});
+
+export const getAgentPerformanceDetail = asyncHandler(async (req, res) => {
+  if (![ROLES.TEAM_LEAD, ROLES.SUPER_ADMIN].includes(req.user.role)) {
+    return res.status(403).json({ success: false, message: 'Forbidden' });
+  }
+
+  const agent = await User.findOne({
+    _id: req.params.agentId,
+    role: ROLES.AGENT,
+    isDeleted: false,
+  })
+    .select('fullName email role profilePhoto assignedTeam team teamLead isActive createdAt')
+    .populate(TEAM_POPULATE)
+    .lean();
+
+  if (!agent) {
+    return res.status(404).json({ success: false, message: 'Agent not found' });
+  }
+
+  if (req.user.role === ROLES.TEAM_LEAD && String(agent.teamLead?._id || '') !== String(req.user._id)) {
+    return res.status(403).json({ success: false, message: 'Forbidden: Agent does not belong to your team' });
+  }
+
+  const rangeInfo = getResolvedRangeInfo(req.query, res);
+  const assignments = await getAssignmentsForAgents([agent._id]);
+  const detail = buildAgentDetailAnalytics({
+    agent,
+    assignments,
+    rangeInfo,
+  });
+
+  res.status(200).json({
+    success: true,
+    detail,
+  });
+});
+
+export const reactivateUser = asyncHandler(async (req, res) => {
+  const targetUser = await getManageableAgent({
+    requester: req.user,
+    targetUserId: req.params.id,
+  });
+
+  if (!targetUser) {
+    return res.status(404).json({ success: false, message: 'Agent not found' });
+  }
+
+  targetUser.isActive = true;
+  targetUser.isBlocked = false;
+  targetUser.isDeleted = false;
+  targetUser.deletedAt = null;
+  targetUser.deletedBy = null;
+  targetUser.updatedBy = req.user._id;
+  targetUser.refreshToken = null;
+
+  await targetUser.save({ validateBeforeSave: false });
+
+  res.status(200).json({
+    success: true,
+    message: 'Agent activated successfully',
+    data: {
+      _id: targetUser._id,
+      isActive: targetUser.isActive,
+    },
+  });
+});
+
+export const removeAgentFromTeam = asyncHandler(async (req, res) => {
+  const targetUser = await getManageableAgent({
+    requester: req.user,
+    targetUserId: req.params.id,
+  });
+
+  if (!targetUser) {
+    return res.status(404).json({ success: false, message: 'Agent not found' });
+  }
+
+  targetUser.team = null;
+  targetUser.teamLead = null;
+  targetUser.assignedTeam = null;
+  targetUser.updatedBy = req.user._id;
+
+  await targetUser.save({ validateBeforeSave: false });
+
+  res.status(200).json({
+    success: true,
+    message: 'Agent removed from the team successfully',
+  });
 });
 
 
@@ -108,9 +544,14 @@ export const getTeamLeadAgents = asyncHandler(async (req, res) => {
     teamLead: req.user._id, 
     role: ROLES.AGENT,
     isDeleted: false 
-  }).select('-password -refreshToken').sort({ createdAt: -1 });
+  })
+    .select('-password -refreshToken')
+    .populate(TEAM_POPULATE)
+    .sort({ createdAt: -1 });
 
-  res.status(200).json({ success: true, count: agents.length, data: agents });
+  const enrichedAgents = await attachMetricsToAgents(agents);
+
+  res.status(200).json({ success: true, count: enrichedAgents.length, data: enrichedAgents });
 });
 
 
@@ -158,7 +599,9 @@ export const updateUser = asyncHandler(async (req, res) => {
     }
     // Prevent Team Leads from elevating agent to super_admin or stealing ownership
     delete req.body.role;
+    delete req.body.team;
     delete req.body.teamLead;
+    delete req.body.assignedTeam;
   } else if (req.user.role !== ROLES.SUPER_ADMIN) {
     return res.status(403).json({ success: false, message: 'Forbidden' });
   }
@@ -182,15 +625,15 @@ export const updateUser = asyncHandler(async (req, res) => {
 
 
 /**
- * @desc    Deactivate (soft delete) a user
- * @route   DELETE /api/user-management/:id
+ * @desc    Deactivate a user without deleting their account
+ * @route   PATCH /api/user-management/:id/deactivate
  * @access  Private
  */
 export const deactivateUser = asyncHandler(async (req, res) => {
   const targetUser = await User.findById(req.params.id);
 
-  if (!targetUser || targetUser.isDeleted) {
-    return res.status(404).json({ success: false, message: 'User not found or already deleted' });
+  if (!targetUser) {
+    return res.status(404).json({ success: false, message: 'User not found' });
   }
 
   // Uses external business logic permission check!
@@ -198,39 +641,118 @@ export const deactivateUser = asyncHandler(async (req, res) => {
      return res.status(403).json({ success: false, message: 'Forbidden: You do not have permission to delete this user' });
   }
 
-  targetUser.isDeleted = true;
-  targetUser.deletedAt = new Date();
-  targetUser.deletedBy = req.user._id;
-  targetUser.isActive = false; // also toggle active flag for local auth checks
+  targetUser.isActive = false;
+  targetUser.updatedBy = req.user._id;
+  targetUser.refreshToken = null;
 
-  await targetUser.save();
+  await targetUser.save({ validateBeforeSave: false });
 
-  res.status(200).json({ success: true, message: 'User deactivated successfully' });
+  res.status(200).json({
+    success: true,
+    message: 'User deactivated successfully',
+    data: {
+      _id: targetUser._id,
+      isActive: targetUser.isActive,
+    },
+  });
 });
 
 
 /**
- * @desc    Restore a soft-deleted user (Admin only)
- * @route   PUT /api/user-management/:id/restore
- * @access  Private/SuperAdmin
+ * @desc    Restore or reactivate an agent
+ * @route   PATCH /api/user-management/:id/reactivate
+ * @access  Private
  */
-export const restoreUser = asyncHandler(async (req, res) => {
+export const restoreUser = reactivateUser;
+
+export const getTeams = asyncHandler(async (req, res) => {
   if (req.user.role !== ROLES.SUPER_ADMIN) {
     return res.status(403).json({ success: false, message: 'Forbidden: Super Admins only' });
   }
 
-  const targetUser = await User.findById(req.params.id);
+  const legacyTeamLeads = await User.find({
+    role: ROLES.TEAM_LEAD,
+    isDeleted: false,
+    assignedTeam: { $nin: [null, ''] },
+  }).select('assignedTeam team role updatedBy');
 
-  if (!targetUser) {
-    return res.status(404).json({ success: false, message: 'User not found' });
+  for (const legacyTeamLead of legacyTeamLeads) {
+    await ensureTeamForLeadUser(legacyTeamLead, req.user._id);
   }
 
-  targetUser.isDeleted = false;
-  targetUser.deletedAt = null;
-  targetUser.deletedBy = null;
-  targetUser.isActive = true;
+  const teams = await Team.find({})
+    .populate('lead', 'fullName assignedTeam')
+    .sort({ name: 1 })
+    .lean();
 
-  await targetUser.save();
+  res.status(200).json({
+    success: true,
+    data: teams.map(formatTeamPayload),
+  });
+});
 
-  res.status(200).json({ success: true, message: 'User successfully restored' });
+export const moveAgentToTeam = asyncHandler(async (req, res) => {
+  if (req.user.role !== ROLES.SUPER_ADMIN) {
+    return res.status(403).json({ success: false, message: 'Forbidden: Super Admins only' });
+  }
+
+  const { teamId } = req.body;
+
+  if (!teamId) {
+    return res.status(400).json({ success: false, message: 'New team is required' });
+  }
+
+  const agent = await User.findOne({
+    _id: req.params.id,
+    role: ROLES.AGENT,
+    isDeleted: false,
+  });
+
+  if (!agent) {
+    return res.status(404).json({ success: false, message: 'Agent not found' });
+  }
+
+  const newTeam = await Team.findById(teamId).populate('lead', 'fullName assignedTeam role');
+  if (!newTeam) {
+    return res.status(404).json({ success: false, message: 'Selected team not found' });
+  }
+
+  if (!newTeam.lead || newTeam.lead.role === ROLES.AGENT) {
+    return res.status(400).json({ success: false, message: 'Selected team does not have a valid Team Lead' });
+  }
+
+  const oldTeamId = agent.team ? String(agent.team) : '';
+  if (oldTeamId && oldTeamId === String(newTeam._id)) {
+    return res.status(400).json({ success: false, message: 'Agent is already assigned to this team' });
+  }
+
+  const oldTeam = agent.team ? await Team.findById(agent.team).select('name') : null;
+
+  agent.team = newTeam._id;
+  agent.assignedTeam = newTeam.name;
+  agent.teamLead = newTeam.lead._id;
+  agent.updatedBy = req.user._id;
+  await agent.save({ validateBeforeSave: false });
+
+  await TeamTransfer.create({
+    agent: agent._id,
+    oldTeam: oldTeam?._id || null,
+    newTeam: newTeam._id,
+    movedBy: req.user._id,
+  });
+
+  const updatedAgent = await User.findById(agent._id)
+    .select('-password -refreshToken')
+    .populate(TEAM_POPULATE)
+    .lean();
+
+  res.status(200).json({
+    success: true,
+    message: `Agent moved from ${oldTeam?.name || 'Unassigned'} to ${newTeam.name}`,
+    data: {
+      agent: updatedAgent,
+      previousTeamName: oldTeam?.name || '',
+      currentTeamName: getCurrentTeamName(updatedAgent),
+    },
+  });
 });

@@ -13,7 +13,7 @@ const LoginPage = () => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
 
-  const { status, error, isAuthenticated, role } = useSelector((state) => state.auth);
+  const { status, error, isAuthenticated, role, sessionNotice } = useSelector((state) => state.auth);
 
   useEffect(() => {
     // If successfully authenticated, reliably fetch fresh user data and establish redirect patterns
@@ -24,7 +24,7 @@ const LoginPage = () => {
           // Future scalable role-based redirect placeholder logic
           const userRole = userData?.user?.role || role;
           if (userRole === 'super_admin') {
-            navigate('/analyst-dash');
+            navigate('/admin-dash');
           } else if (userRole === 'data_analyst') {
             navigate('/analyst-dash');
           } else if (userRole === 'manager') {
@@ -80,6 +80,12 @@ const LoginPage = () => {
         </div>
 
         <form className="mt-8 space-y-6" onSubmit={handleSubmit} noValidate>
+          {sessionNotice && (
+            <div className="rounded-md border border-amber-200 bg-amber-50 p-4">
+              <p className="text-sm font-medium text-amber-800">{sessionNotice}</p>
+            </div>
+          )}
+
           <div className="space-y-5">
             <div>
               <label htmlFor="email-address" className="block text-sm font-medium text-gray-700">

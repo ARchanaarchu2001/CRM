@@ -14,6 +14,29 @@ export const axiosPrivate = axios.create({
   withCredentials: true,
 });
 
+export const axiosPublic = axios.create({
+  baseURL: BASE_URL,
+  headers: { 'Content-Type': 'application/json' },
+  withCredentials: true,
+});
+
+let refreshPromise = null;
+
+const isAuthRequest = (url = '') => String(url).includes('/auth/');
+
+const getFreshAccessToken = async () => {
+  if (!refreshPromise) {
+    refreshPromise = axiosPublic
+      .post('/auth/refresh-token')
+      .then((response) => response.data.accessToken)
+      .finally(() => {
+        refreshPromise = null;
+      });
+  }
+
+  return refreshPromise;
+};
+
 // Request interceptor: Always attach latest JWT token from Redux
 axiosPrivate.interceptors.request.use(
   (config) => {
@@ -35,18 +58,16 @@ axiosPrivate.interceptors.response.use(
     const originalRequest = error.config;
 
     // Retry exactly once on 401 Unauthorized
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    if (
+      error.response?.status === 401 &&
+      originalRequest &&
+      !originalRequest._retry &&
+      !isAuthRequest(originalRequest.url)
+    ) {
       originalRequest._retry = true;
 
       try {
-        // Ping refresh endpoint using a fresh standard axios instance (bypassing interceptors context loop)
-        const apiResponse = await axios.post(
-          `${BASE_URL}/auth/refresh-token`,
-          {},
-          { withCredentials: true }
-        );
-
-        const { accessToken } = apiResponse.data;
+        const accessToken = await getFreshAccessToken();
 
         // Dispatch raw action to purely avoid circular imports with Slice
         if (store) {
@@ -66,7 +87,12 @@ axiosPrivate.interceptors.response.use(
       } catch (refreshError) {
         // Ultimate failure: Token completely dead, kick out user locally
         if (store) {
-          store.dispatch({ type: 'auth/logoutLocally' });
+          store.dispatch({
+            type: 'auth/logoutLocally',
+            payload: {
+              notice: 'Your session expired. Please log in again.',
+            },
+          });
         }
         return Promise.reject(refreshError);
       }
@@ -79,4 +105,5 @@ axiosPrivate.interceptors.response.use(
 export default axios.create({
   baseURL: BASE_URL,
   headers: { 'Content-Type': 'application/json' },
+  withCredentials: true,
 });

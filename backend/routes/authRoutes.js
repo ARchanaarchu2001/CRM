@@ -9,6 +9,11 @@ import {
   resetPassword,
 } from '../controllers/authController.js';
 import { protect } from '../middleware/authMiddleware.js';
+import {
+  loginLimiter,
+  passwordRecoveryLimiter,
+  refreshTokenLimiter,
+} from '../middleware/rateLimiters.js';
 import { validate } from '../middleware/validateMiddleware.js';
 import {
   loginValidation,
@@ -21,10 +26,10 @@ import {
 const router = express.Router();
 
 // Public Routes
-router.post('/login', loginValidation, validate, loginUser);
-router.post('/refresh-token', refreshTokenValidation, validate, refreshAccessToken);
-router.post('/forgot-password', forgotPasswordValidation, validate, forgotPassword);
-router.post('/reset-password', resetPasswordValidation, validate, resetPassword);
+router.post('/login', loginLimiter, loginValidation, validate, loginUser);
+router.post('/refresh-token', refreshTokenLimiter, refreshTokenValidation, validate, refreshAccessToken);
+router.post('/forgot-password', passwordRecoveryLimiter, forgotPasswordValidation, validate, forgotPassword);
+router.post('/reset-password', passwordRecoveryLimiter, resetPasswordValidation, validate, resetPassword);
 
 // Protected Routes
 router.post('/logout', protect, logoutUser);

@@ -3,9 +3,9 @@ import { Navigate, Outlet } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 
 const RoleProtectedRoute = ({ allowedRoles }) => {
-  const { isAuthenticated, role, status } = useSelector((state) => state.auth);
+  const { isAuthenticated, role, status, user } = useSelector((state) => state.auth);
 
-  if (status === 'loading') {
+  if (status === 'loading' || (isAuthenticated && !user)) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <svg className="animate-spin h-10 w-10 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -17,7 +17,7 @@ const RoleProtectedRoute = ({ allowedRoles }) => {
   }
 
   // Double check basic auth first
-  if (!isAuthenticated) {
+  if (!isAuthenticated || !user) {
     return <Navigate to="/login" replace />;
   }
 

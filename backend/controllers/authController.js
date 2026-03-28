@@ -88,13 +88,12 @@ export const logoutUser = asyncHandler(async (req, res) => {
 // @access  Public (Requires valid refresh token cookie)
 export const refreshAccessToken = asyncHandler(async (req, res) => {
   const cookies = req.cookies;
+  const refreshToken = cookies?.refreshToken;
 
-  if (!cookies?.refreshToken) {
+  if (!refreshToken) {
     res.status(401);
     throw new Error('Unauthorized - No refresh token provided');
   }
-
-  const refreshToken = cookies.refreshToken;
 
   // Verify token natively
   let decoded;

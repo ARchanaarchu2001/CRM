@@ -1,4 +1,4 @@
-import { axiosPrivate } from '../../api/axios.js';
+import { axiosPrivate, axiosPublic } from '../../api/axios.js';
 
 export const loginAPI = async (credentials) => {
   const response = await axiosPrivate.post('/auth/login', credentials);
@@ -16,6 +16,6 @@ export const fetchMeAPI = async () => {
 };
 
 export const refreshTokenAPI = async () => {
-  const response = await axiosPrivate.post('/auth/refresh-token');
+  const response = await axiosPublic.post('/auth/refresh-token');
   return response.data;
 };

@@ -1,37 +1,49 @@
 import React, { useState, useEffect } from 'react';
 import { Outlet } from 'react-router-dom';
-import { useDispatch, useSelector } from 'react-redux';
-import { refreshToken, fetchMe } from '../features/auth/authSlice.js';
+import { useDispatch } from 'react-redux';
+import { fetchMe, logoutLocally, refreshToken, restoreAuthFromStorage } from '../features/auth/authSlice.js';
+import { getAuthToken } from '../utils/localStorage.js';
 
 const PersistLogin = () => {
   const [isLoading, setIsLoading] = useState(true);
-  const { accessToken } = useSelector((state) => state.auth);
   const dispatch = useDispatch();
 
   useEffect(() => {
     let isMounted = true;
 
-    const verifyRefreshToken = async () => {
+    const initializeAuth = async () => {
+      const token = getAuthToken();
+
       try {
-        await dispatch(refreshToken()).unwrap();
-        await dispatch(fetchMe()).unwrap();
+        if (token) {
+          dispatch(restoreAuthFromStorage());
+          await dispatch(fetchMe()).unwrap();
+        } else {
+          await dispatch(refreshToken()).unwrap();
+          await dispatch(fetchMe()).unwrap();
+        }
       } catch (error) {
-        // Fails silently if cookie doesn't exist or is expired - the ProtectedRoute will handle bumping them to /login
-      } finally {
-        if (isMounted) setIsLoading(false);
+        try {
+          await dispatch(refreshToken()).unwrap();
+          await dispatch(fetchMe()).unwrap();
+        } catch (refreshError) {
+          dispatch(
+            logoutLocally({
+              notice: 'Your session expired. Please log in again.',
+            })
+          );
+        }
       }
+
+      if (isMounted) setIsLoading(false);
     };
 
-    if (!accessToken) {
-      verifyRefreshToken();
-    } else {
-      setIsLoading(false);
-    }
+    initializeAuth();
 
     return () => {
       isMounted = false;
     };
-  }, []); // Run precisely once on mount
+  }, [dispatch]); // Run exactly once on mount
 
   if (isLoading) {
     return (

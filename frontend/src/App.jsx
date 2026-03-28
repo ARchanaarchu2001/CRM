@@ -6,6 +6,7 @@ import AnalystDashboard from './pages/AnalystDashboard';
 import AnalystDatasetPage from './pages/AnalystDatasetPage';
 import AgentPipelinePage from './pages/AgentPipelinePage';
 import AgentQueuePage from './pages/AgentQueuePage';
+import AgentPerformanceDetailPage from './pages/AgentPerformanceDetailPage';
 import DashboardHome from './pages/DashboardHome';
 import LeadSettingsPage from './pages/LeadSettingsPage';
 import LoginPage from './pages/LoginPage';
@@ -19,6 +20,8 @@ import MainLayout from './layouts/MainLayout';
 
 import SuperAdminDash from './pages/SuperAdminDash';
 import TeamLeadDash from './pages/TeamLeadDash';
+import TeamLeadSettingsPage from './pages/TeamLeadSettingsPage';
+import TeamLeadConversionPage from './pages/TeamLeadConversionPage';
 
 const ManagerDash = () => <div><h2 className="text-2xl font-bold text-blue-700">Manager Zone</h2><p>Managers and above can see this.</p></div>;
 
@@ -55,11 +58,20 @@ function App() {
                 <Route path="/team-lead-dash" element={<TeamLeadDash />} />
               </Route>
 
+              <Route element={<RoleProtectedRoute allowedRoles={['team_lead']} />}>
+                <Route path="/team-lead-settings" element={<TeamLeadSettingsPage />} />
+                <Route path="/team-lead-conversion" element={<TeamLeadConversionPage />} />
+              </Route>
+
+              <Route element={<RoleProtectedRoute allowedRoles={['team_lead', 'super_admin']} />}>
+                <Route path="/agent-performance/:agentId" element={<AgentPerformanceDetailPage />} />
+              </Route>
+
               <Route element={<RoleProtectedRoute allowedRoles={['manager', 'super_admin']} />}>
                 <Route path="/manager-dash" element={<ManagerDash />} />
               </Route>
 
-              <Route element={<RoleProtectedRoute allowedRoles={['agent', 'super_admin']} />}>
+              <Route element={<RoleProtectedRoute allowedRoles={['agent', 'team_lead', 'manager', 'super_admin']} />}>
                 <Route path="/agent-dash" element={<AgentDashboard />} />
                 <Route path="/agent-dash/:batchId" element={<AgentBatchPage />} />
                 <Route path="/agent-pipeline" element={<AgentPipelinePage />} />
