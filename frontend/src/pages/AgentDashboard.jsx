@@ -53,6 +53,7 @@ const AgentDashboard = () => {
       const data = await fetchManagedAgentDashboardView(agentId);
       setAgentName(data.view?.agent?.fullName || '');
       setBatches(data.view?.batches || []);
+      setCompletedBatches([]);
       setQueueSummary(data.view?.queueSummary || {
         pending: 0,
         followUp: 0,
@@ -141,10 +142,12 @@ const AgentDashboard = () => {
 
   useEffect(() => {
     loadBatches();
-    loadQueueSummary();
-    loadPipelineSummary();
-    loadPerformanceSummary();
-  }, []);
+    if (!isManagedView) {
+      loadQueueSummary();
+      loadPipelineSummary();
+      loadPerformanceSummary();
+    }
+  }, [agentId, isManagedView]);
 
   const handleHideBatch = async (importBatchId) => {
     setBatchActionState((current) => ({
@@ -196,15 +199,17 @@ const AgentDashboard = () => {
         </div>
       )}
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <h2 className="text-xl font-semibold text-slate-900">My Performance</h2>
-            <p className="mt-2 text-sm text-slate-600">
-              See your dial, submission, and activation counts for today, this week, and this month.
-            </p>
-          </div>
-          {isManagedView && (
+      {isManagedView ? (
+        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <h2 className="text-xl font-semibold text-slate-900">
+                {agentName || 'Agent'} Dashboard
+              </h2>
+              <p className="mt-2 text-sm text-slate-600">
+                This is the actual agent dashboard in read-only mode. Team Leads can inspect the agent queue, pipeline, and datasets without editing anything.
+              </p>
+            </div>
             <button
               type="button"
               onClick={() => navigate(-1)}
@@ -212,39 +217,50 @@ const AgentDashboard = () => {
             >
               Back
             </button>
-          )}
-        </div>
-
-        <div className="mt-5 grid gap-4 lg:grid-cols-3">
-          {[
-            { key: 'today', label: 'Today', tone: 'border-sky-200 bg-sky-50' },
-            { key: 'week', label: 'This Week', tone: 'border-indigo-200 bg-indigo-50' },
-            { key: 'month', label: 'This Month', tone: 'border-emerald-200 bg-emerald-50' },
-          ].map((card) => (
-            <div key={card.key} className={`rounded-2xl border p-5 shadow-sm ${card.tone}`}>
-              <div className="text-sm font-semibold text-slate-900">{card.label}</div>
-              {statsLoading ? (
-                <div className="mt-4 text-sm text-slate-600">Loading...</div>
-              ) : (
-                <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                  <div>
-                    <div className="text-xs uppercase tracking-wide text-slate-500">Dials</div>
-                    <div className="mt-1 text-2xl font-bold text-slate-900">{performanceSummary[card.key].dials}</div>
-                  </div>
-                  <div>
-                    <div className="text-xs uppercase tracking-wide text-slate-500">Submissions</div>
-                    <div className="mt-1 text-2xl font-bold text-slate-900">{performanceSummary[card.key].submissions}</div>
-                  </div>
-                  <div>
-                    <div className="text-xs uppercase tracking-wide text-slate-500">Activations</div>
-                    <div className="mt-1 text-2xl font-bold text-slate-900">{performanceSummary[card.key].activations}</div>
-                  </div>
-                </div>
-              )}
+          </div>
+        </section>
+      ) : (
+        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <h2 className="text-xl font-semibold text-slate-900">My Performance</h2>
+              <p className="mt-2 text-sm text-slate-600">
+                See your dial, submission, and activation counts for today, this week, and this month.
+              </p>
             </div>
-          ))}
-        </div>
-      </section>
+          </div>
+
+          <div className="mt-5 grid gap-4 lg:grid-cols-3">
+            {[
+              { key: 'today', label: 'Today', tone: 'border-sky-200 bg-sky-50' },
+              { key: 'week', label: 'This Week', tone: 'border-indigo-200 bg-indigo-50' },
+              { key: 'month', label: 'This Month', tone: 'border-emerald-200 bg-emerald-50' },
+            ].map((card) => (
+              <div key={card.key} className={`rounded-2xl border p-5 shadow-sm ${card.tone}`}>
+                <div className="text-sm font-semibold text-slate-900">{card.label}</div>
+                {statsLoading ? (
+                  <div className="mt-4 text-sm text-slate-600">Loading...</div>
+                ) : (
+                  <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                    <div>
+                      <div className="text-xs uppercase tracking-wide text-slate-500">Dials</div>
+                      <div className="mt-1 text-2xl font-bold text-slate-900">{performanceSummary[card.key].dials}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs uppercase tracking-wide text-slate-500">Submissions</div>
+                      <div className="mt-1 text-2xl font-bold text-slate-900">{performanceSummary[card.key].submissions}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs uppercase tracking-wide text-slate-500">Activations</div>
+                      <div className="mt-1 text-2xl font-bold text-slate-900">{performanceSummary[card.key].activations}</div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-4">
@@ -309,12 +325,15 @@ const AgentDashboard = () => {
       <section className="space-y-4">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <h2 className="text-xl font-semibold text-slate-900">Active Datasets</h2>
+            <h2 className="text-xl font-semibold text-slate-900">{isManagedView ? 'Datasets' : 'Active Datasets'}</h2>
             <p className="mt-2 text-sm text-slate-600">
-              These are the datasets currently on your dashboard for calling work.
+              {isManagedView
+                ? 'These are the agent datasets available for read-only review.'
+                : 'These are the datasets currently on your dashboard for calling work.'}
             </p>
           </div>
-          <div className="flex flex-wrap gap-3">
+          {!isManagedView && (
+            <div className="flex flex-wrap gap-3">
             <a
               href="#active-datasets"
               className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
@@ -327,7 +346,8 @@ const AgentDashboard = () => {
             >
               Completed Datasets
             </a>
-          </div>
+            </div>
+          )}
         </div>
 
         <div id="active-datasets" className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3 scroll-mt-24">
@@ -353,22 +373,33 @@ const AgentDashboard = () => {
               </div>
 
               <div className="mt-5 flex flex-wrap gap-3">
-                <Link
-                  to={`/agent-dash/${batch.importBatchId}`}
-                  className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
-                >
-                  Open Batch
-                </Link>
-                <button
-                  type="button"
-                  onClick={() => handleHideBatch(batch.importBatchId)}
-                  disabled={Boolean(batchActionState[String(batch.importBatchId)])}
-                  className="rounded-xl border border-red-200 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {batchActionState[String(batch.importBatchId)] === 'completing'
-                    ? 'Completing...'
-                    : 'Completed'}
-                </button>
+                {isManagedView ? (
+                  <Link
+                    to={`${managedBasePath}/batches/${batch.importBatchId}`}
+                    className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+                  >
+                    Open Batch
+                  </Link>
+                ) : (
+                  <>
+                    <Link
+                      to={`/agent-dash/${batch.importBatchId}`}
+                      className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+                    >
+                      Open Batch
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={() => handleHideBatch(batch.importBatchId)}
+                      disabled={Boolean(batchActionState[String(batch.importBatchId)])}
+                      className="rounded-xl border border-red-200 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {batchActionState[String(batch.importBatchId)] === 'completing'
+                        ? 'Completing...'
+                        : 'Completed'}
+                    </button>
+                  </>
+                )}
               </div>
             </article>
           ))}
@@ -381,6 +412,7 @@ const AgentDashboard = () => {
         </div>
       </section>
 
+      {!isManagedView && (
       <section id="completed-datasets" className="space-y-4 scroll-mt-24">
         <div>
           <h2 className="text-xl font-semibold text-slate-900">Completed Datasets</h2>
@@ -439,6 +471,7 @@ const AgentDashboard = () => {
           )}
         </div>
       </section>
+      )}
     </div>
   );
 };

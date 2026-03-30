@@ -16,24 +16,22 @@ const MainLayout = () => {
   const links = [
     { to: role === 'agent' ? '/agent-dash' : '/dashboard', label: 'Home', show: true },
     { to: '/admin-dash', label: 'Admin Dashboard', show: ['super_admin'].includes(role) },
+
     { to: '/analyst-dash', label: 'Analyst Workspace', show: ['data_analyst', 'super_admin'].includes(role) },
-    { to: '/lead-settings', label: 'Lead Settings', show: ['data_analyst', 'super_admin'].includes(role) },
-    { to: '/agent-dash', label: 'Agent Board', show: ['super_admin'].includes(role) },
-    { to: '/agent-pipeline', label: 'Pipeline', show: ['agent', 'super_admin'].includes(role) },
-    { to: '/manager-dash', label: 'Manager', show: ['manager', 'super_admin'].includes(role) },
-    { to: '/team-lead-dash', label: 'Team Lead', show: ['team_lead', 'manager', 'super_admin'].includes(role) },
-    { to: '/team-lead-settings', label: 'Settings', show: ['team_lead'].includes(role) },
-    { to: '/admin-conversion', label: 'Product Conversion', show: ['super_admin'].includes(role) },
-    { to: '/analyst-dash', label: 'Analyst Workspace', show: ['data_analyst'].includes(role) },
     { to: '/analyst-overview', label: 'Analyst Overview', show: ['data_analyst'].includes(role) },
     { to: '/analyst-agent-performance', label: 'Agent Performance', show: ['data_analyst'].includes(role) },
-    { to: '/lead-settings', label: 'Lead Settings', show: ['data_analyst'].includes(role) },
-    { to: '/agent-dash', label: 'Agent Board', show: ['agent'].includes(role) },
+
+    { to: '/lead-settings', label: 'Lead Settings', show: ['data_analyst', 'super_admin'].includes(role) },
+
     { to: '/agent-pipeline', label: 'Pipeline', show: ['agent'].includes(role) },
+
     { to: '/manager-dash', label: 'Manager', show: ['manager'].includes(role) },
+
     { to: '/team-lead-dash', label: 'Team Lead', show: ['team_lead', 'manager'].includes(role) },
     { to: '/team-lead-conversion', label: 'Data Conversion', show: ['team_lead'].includes(role) },
     { to: '/team-lead-settings', label: 'Settings', show: ['team_lead'].includes(role) },
+
+    { to: '/admin-conversion', label: 'Product Conversion', show: ['super_admin'].includes(role) },
     { to: '/admin-settings', label: 'Settings', show: ['super_admin'].includes(role) },
   ];
 
