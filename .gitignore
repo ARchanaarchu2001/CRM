@@ -11,6 +11,7 @@ backend/.env
 # Build files
 dist/
 build/
+frontend/dist
 
 # Logs
 logs
