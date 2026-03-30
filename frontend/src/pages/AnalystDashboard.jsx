@@ -30,6 +30,8 @@ const AnalystDashboard = () => {
     status: '',
   });
   const [openProducts, setOpenProducts] = useState({});
+  const [isPreviewing, setIsPreviewing] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
 
   const loadMetadata = async () => {
     const data = await fetchLeadMetadata();
@@ -114,6 +116,7 @@ const AnalystDashboard = () => {
     }
 
     try {
+      setIsPreviewing(true);
       setUploadState((current) => ({ ...current, status: 'Preparing preview...' }));
       const preview = await previewLeadFile({
         file: uploadState.file,
@@ -133,6 +136,8 @@ const AnalystDashboard = () => {
         ...current,
         status: error.response?.data?.message || 'Could not preview file',
       }));
+    } finally {
+      setIsPreviewing(false);
     }
   };
 
@@ -143,6 +148,7 @@ const AnalystDashboard = () => {
     }
 
     try {
+      setIsImporting(true);
       setUploadState((current) => ({ ...current, status: 'Importing leads...' }));
       const response = await importLeadFile({
         product: selectedProduct,
@@ -169,6 +175,8 @@ const AnalystDashboard = () => {
         ...current,
         status: error.response?.data?.message || 'Lead import failed',
       }));
+    } finally {
+      setIsImporting(false);
     }
   };
 
@@ -312,9 +320,10 @@ const AnalystDashboard = () => {
           <div className="lg:col-span-4">
             <button
               type="submit"
+              disabled={isPreviewing}
               className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
             >
-              Preview File
+              {isPreviewing ? 'Preparing Preview...' : 'Preview File'}
             </button>
           </div>
         </form>
@@ -425,9 +434,10 @@ const AnalystDashboard = () => {
                 <button
                   type="button"
                   onClick={handleImport}
-                  className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700"
+                  disabled={isImporting}
+                  className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-70"
                 >
-                  Import Batch
+                  {isImporting ? 'Importing Batch...' : 'Import Batch'}
                 </button>
               </div>
 
