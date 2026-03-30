@@ -121,6 +121,13 @@ export const hideAssignmentBatch = async (importBatchId) => {
   return response.data;
 };
 
+export const restoreAssignmentBatch = async (importBatchId) => {
+  const response = await axiosPrivate.put(
+    `/leads/assignments/batches/${importBatchId}/restore`
+  );
+  return response.data;
+};
+
 // Update assignment
 export const updateAssignment = async (assignmentId, payload) => {
   const response = await axiosPrivate.put(

@@ -14,6 +14,7 @@ import {
   hideAssignmentBatch,
   importLeads,
   previewLeadImport,
+  restoreAssignmentBatch,
   updateAssignmentOutcome,
   upsertRemarkConfig,
 } from '../controllers/leadController.js';
@@ -83,6 +84,11 @@ router.put(
   '/assignments/batches/:importBatchId/hide',
   authorizeRoles(ROLES.AGENT, ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN),
   hideAssignmentBatch
+);
+router.put(
+  '/assignments/batches/:importBatchId/restore',
+  authorizeRoles(ROLES.AGENT, ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN),
+  restoreAssignmentBatch
 );
 router.put(
   '/assignments/:assignmentId',

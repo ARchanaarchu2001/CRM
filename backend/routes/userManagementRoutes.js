@@ -1,5 +1,6 @@
 import express from 'express';
 import {
+  getAgentSelfDashboard,
   createUserByAdmin,
   createAgentByTeamLead,
   getAllUsersForAdmin,
@@ -74,6 +75,12 @@ router.get(
   '/dashboard/team-lead',
   authorizeRoles(ROLES.TEAM_LEAD),
   getTeamLeadDashboard
+);
+
+router.get(
+  '/dashboard/agent-self',
+  authorizeRoles(ROLES.AGENT),
+  getAgentSelfDashboard
 );
 
 router.get(

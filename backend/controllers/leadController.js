@@ -765,11 +765,11 @@ export const getMyAssignments = asyncHandler(async (req, res) => {
 });
 
 export const getMyAssignmentBatches = asyncHandler(async (req, res) => {
-  const batches = await LeadAssignment.aggregate([
+  const buildBatchAggregation = (isCompleted) => ([
     {
       $match: {
         agent: req.user._id,
-        hiddenByAgent: { $ne: true },
+        hiddenByAgent: isCompleted ? true : { $ne: true },
         inPipeline: { $ne: true },
       },
     },
@@ -865,8 +865,14 @@ export const getMyAssignmentBatches = asyncHandler(async (req, res) => {
     },
   ]);
 
+  const [batches, completedBatches] = await Promise.all([
+    LeadAssignment.aggregate(buildBatchAggregation(false)),
+    LeadAssignment.aggregate(buildBatchAggregation(true)),
+  ]);
+
   res.status(200).json({
     batches,
+    completedBatches,
   });
 });
 
@@ -966,7 +972,32 @@ export const hideAssignmentBatch = asyncHandler(async (req, res) => {
   }
 
   res.status(200).json({
-    message: 'Batch hidden from dashboard',
+    message: 'Batch marked as completed',
+  });
+});
+
+export const restoreAssignmentBatch = asyncHandler(async (req, res) => {
+  const { importBatchId } = req.params;
+
+  const result = await LeadAssignment.updateMany(
+    {
+      agent: req.user._id,
+      importBatch: importBatchId,
+    },
+    {
+      $set: {
+        hiddenByAgent: false,
+      },
+    }
+  );
+
+  if (!result.matchedCount) {
+    res.status(404);
+    throw new Error('Batch not found for this agent');
+  }
+
+  res.status(200).json({
+    message: 'Batch moved back to active dashboard',
   });
 });
 

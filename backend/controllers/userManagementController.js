@@ -418,6 +418,39 @@ export const getTeamLeadDashboard = asyncHandler(async (req, res) => {
   });
 });
 
+export const getAgentSelfDashboard = asyncHandler(async (req, res) => {
+  if (req.user.role !== ROLES.AGENT) {
+    return res.status(403).json({ success: false, message: 'Forbidden' });
+  }
+
+  const agent = await User.findOne({
+    _id: req.user._id,
+    role: ROLES.AGENT,
+    isDeleted: false,
+  })
+    .select('fullName email role profilePhoto assignedTeam team teamLead isActive createdAt')
+    .populate(TEAM_POPULATE)
+    .lean();
+
+  if (!agent) {
+    return res.status(404).json({ success: false, message: 'Agent not found' });
+  }
+
+  const rangeInfo = getResolvedRangeInfo(req.query, res);
+  const assignments = await getAssignmentsForAgents([agent._id]);
+  const analytics = buildAgentDetailAnalytics({
+    agent,
+    assignments,
+    rangeInfo,
+  });
+
+  res.status(200).json({
+    success: true,
+    scope: 'agent',
+    dashboard: analytics,
+  });
+});
+
 export const getSuperAdminDashboard = asyncHandler(async (req, res) => {
   if (req.user.role !== ROLES.SUPER_ADMIN) {
     return res.status(403).json({ success: false, message: 'Forbidden' });
