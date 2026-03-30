@@ -22,7 +22,11 @@ export const previewLeadFile = async (payload) => {
     formData.append('contactColumn', payload.contactColumn);
   }
 
-  const response = await axiosPrivate.post('/leads/preview', formData);
+  const response = await axiosPrivate.post('/leads/preview', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  });
   return response.data;
 };
 
@@ -49,7 +53,11 @@ export const importLeadFile = async (payload) => {
     JSON.stringify(payload.addedColumns || [])
   );
 
-  const response = await axiosPrivate.post('/leads/import', formData);
+  const response = await axiosPrivate.post('/leads/import', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  });
   return response.data;
 };
 

@@ -10,13 +10,11 @@ export const injectStore = (_store) => {
 
 export const axiosPrivate = axios.create({
   baseURL: BASE_URL,
-  headers: { 'Content-Type': 'application/json' },
   withCredentials: true,
 });
 
 export const axiosPublic = axios.create({
   baseURL: BASE_URL,
-  headers: { 'Content-Type': 'application/json' },
   withCredentials: true,
 });
 
@@ -104,6 +102,5 @@ axiosPrivate.interceptors.response.use(
 
 export default axios.create({
   baseURL: BASE_URL,
-  headers: { 'Content-Type': 'application/json' },
   withCredentials: true,
 });
