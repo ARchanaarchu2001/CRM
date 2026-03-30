@@ -238,7 +238,6 @@ const AgentPipelinePage = () => {
     }
   };
 
-<<<<<<< Updated upstream
   const removeFromPipeline = async (assignment) => {
     const existingTimer = timersRef.current.get(assignment._id);
     if (existingTimer) {
@@ -298,15 +297,6 @@ const AgentPipelinePage = () => {
         return nextState;
       });
     }
-=======
-  const removeFromPipeline = (assignment) => {
-    if (isManagedView) {
-      return;
-    }
-
-    handleFieldChange(assignment._id, 'inPipeline', false);
-    handleFieldChange(assignment._id, 'pipelineFollowUpDate', '');
->>>>>>> Stashed changes
   };
 
   return (
@@ -334,33 +324,30 @@ const AgentPipelinePage = () => {
           <button
             type="button"
             onClick={() => setViewFilter('due_today')}
-            className={`rounded-2xl px-4 py-3 text-left transition ${
-              viewFilter === 'due_today'
-                ? 'bg-amber-200 text-amber-950 ring-2 ring-amber-400'
-                : 'bg-amber-50 text-amber-800 hover:bg-amber-100'
-            }`}
+            className={`rounded-2xl px-4 py-3 text-left transition ${viewFilter === 'due_today'
+              ? 'bg-amber-200 text-amber-950 ring-2 ring-amber-400'
+              : 'bg-amber-50 text-amber-800 hover:bg-amber-100'
+              }`}
           >
             {summary.dueTodayCount} due today
           </button>
           <button
             type="button"
             onClick={() => setViewFilter('overdue')}
-            className={`rounded-2xl px-4 py-3 text-left transition ${
-              viewFilter === 'overdue'
-                ? 'bg-rose-200 text-rose-950 ring-2 ring-rose-400'
-                : 'bg-rose-50 text-rose-800 hover:bg-rose-100'
-            }`}
+            className={`rounded-2xl px-4 py-3 text-left transition ${viewFilter === 'overdue'
+              ? 'bg-rose-200 text-rose-950 ring-2 ring-rose-400'
+              : 'bg-rose-50 text-rose-800 hover:bg-rose-100'
+              }`}
           >
             {summary.overdueCount} overdue
           </button>
           <button
             type="button"
             onClick={() => setViewFilter('all')}
-            className={`rounded-2xl px-4 py-3 text-left transition ${
-              viewFilter === 'all'
-                ? 'bg-slate-200 text-slate-950 ring-2 ring-slate-400'
-                : 'bg-slate-50 text-slate-700 hover:bg-slate-100'
-            }`}
+            className={`rounded-2xl px-4 py-3 text-left transition ${viewFilter === 'all'
+              ? 'bg-slate-200 text-slate-950 ring-2 ring-slate-400'
+              : 'bg-slate-50 text-slate-700 hover:bg-slate-100'
+              }`}
           >
             {assignments.length} total in pipeline
           </button>
@@ -599,7 +586,6 @@ const AgentPipelinePage = () => {
                       </select>
                     </td>
                     <td className="px-3 py-2">
-<<<<<<< Updated upstream
                       <button
                         type="button"
                         onClick={() => removeFromPipeline(assignment)}
@@ -608,26 +594,15 @@ const AgentPipelinePage = () => {
                       >
                         {removingIds[assignment._id] ? 'Removing...' : 'Remove From Pipeline'}
                       </button>
-=======
-                      {!isManagedView && (
-                        <button
-                          type="button"
-                          onClick={() => removeFromPipeline(assignment)}
-                          className="rounded-xl border border-slate-300 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
-                        >
-                          Return To Batch
-                        </button>
-                      )}
->>>>>>> Stashed changes
-                    </td>
-                  </tr>
+                    </td >
+                  </tr >
                 );
               })}
-            </tbody>
-          </table>
-        </div>
-      </section>
-    </div>
+            </tbody >
+          </table >
+        </div >
+      </section >
+    </div >
   );
 };
 

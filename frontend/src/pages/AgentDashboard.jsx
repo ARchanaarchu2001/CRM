@@ -141,7 +141,6 @@ const AgentDashboard = () => {
 
   useEffect(() => {
     loadBatches();
-<<<<<<< Updated upstream
     loadQueueSummary();
     loadPipelineSummary();
     loadPerformanceSummary();
@@ -187,24 +186,6 @@ const AgentDashboard = () => {
         return nextState;
       });
     }
-=======
-    if (!isManagedView) {
-      loadQueueSummary();
-      loadPipelineSummary();
-    }
-  }, [agentId]);
-
-  const handleHideBatch = async (importBatchId) => {
-    if (isManagedView) {
-      return;
-    }
-
-    await hideAssignmentBatch(importBatchId);
-    setMessage('Batch hidden from your dashboard.');
-    await loadBatches();
-    await loadQueueSummary();
-    await loadPipelineSummary();
->>>>>>> Stashed changes
   };
 
   return (
@@ -218,19 +199,9 @@ const AgentDashboard = () => {
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-<<<<<<< Updated upstream
             <h2 className="text-xl font-semibold text-slate-900">My Performance</h2>
             <p className="mt-2 text-sm text-slate-600">
               See your dial, submission, and activation counts for today, this week, and this month.
-=======
-            <h2 className="text-xl font-semibold text-slate-900">
-              {isManagedView ? `${agentName || 'Agent'} Dashboard` : 'My Batches'}
-            </h2>
-            <p className="mt-2 text-sm text-slate-600">
-              {isManagedView
-                ? 'This is the actual agent dashboard in read-only mode. Supervisors can inspect it, but cannot update anything here.'
-                : 'Open one batch at a time. The table will open on a separate page with source fields first and your work fields on the right.'}
->>>>>>> Stashed changes
             </p>
           </div>
           {isManagedView && (
@@ -360,81 +331,53 @@ const AgentDashboard = () => {
         </div>
 
         <div id="active-datasets" className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3 scroll-mt-24">
-        {batches.map((batch) => (
-          <article key={String(batch.importBatchId)} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h3 className="text-lg font-semibold text-slate-900">{batch.batchName}</h3>
-                <p className="mt-1 text-xs uppercase tracking-wide text-slate-500">{batch.product}</p>
+          {batches.map((batch) => (
+            <article key={String(batch.importBatchId)} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-900">{batch.batchName}</h3>
+                  <p className="mt-1 text-xs uppercase tracking-wide text-slate-500">{batch.product}</p>
+                </div>
               </div>
-            </div>
 
-            <div className="mt-4 flex flex-wrap gap-2 text-xs text-slate-600">
-              <span>{batch.totalRows} rows</span>
-              <span>{batch.notDialedCount || 0} pending</span>
-              <span>{batch.dialedCount || 0} dialed</span>
-              <span>{batch.followUpCount || 0} follow up</span>
-              <span>{batch.callbackCount || 0} callback</span>
-              <span>{batch.interestedCount || 0} interested</span>
-              <span>{batch.pipelineCount || 0} in pipeline</span>
-              <span>{batch.submittedCount || 0} submitted</span>
-              <span>{batch.activatedCount || 0} activated</span>
-            </div>
+              <div className="mt-4 flex flex-wrap gap-2 text-xs text-slate-600">
+                <span>{batch.totalRows} rows</span>
+                <span>{batch.notDialedCount || 0} pending</span>
+                <span>{batch.dialedCount || 0} dialed</span>
+                <span>{batch.followUpCount || 0} follow up</span>
+                <span>{batch.callbackCount || 0} callback</span>
+                <span>{batch.interestedCount || 0} interested</span>
+                <span>{batch.pipelineCount || 0} in pipeline</span>
+                <span>{batch.submittedCount || 0} submitted</span>
+                <span>{batch.activatedCount || 0} activated</span>
+              </div>
 
-            <div className="mt-5 flex flex-wrap gap-3">
-<<<<<<< Updated upstream
-              <Link
-                to={`/agent-dash/${batch.importBatchId}`}
-                className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
-              >
-                Open Batch
-              </Link>
-              <button
-                type="button"
-                onClick={() => handleHideBatch(batch.importBatchId)}
-                disabled={Boolean(batchActionState[String(batch.importBatchId)])}
-                className="rounded-xl border border-red-200 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {batchActionState[String(batch.importBatchId)] === 'completing'
-                  ? 'Completing...'
-                  : 'Completed'}
-              </button>
-=======
-              {!isManagedView && (
-                <>
-                  <Link
-                    to={`/agent-dash/${batch.importBatchId}`}
-                    className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
-                  >
-                    Open Batch
-                  </Link>
-                  <button
-                    type="button"
-                    onClick={() => handleHideBatch(batch.importBatchId)}
-                    className="rounded-xl border border-red-200 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
-                  >
-                    Hide
-                  </button>
-                </>
-              )}
-              {isManagedView && (
+              <div className="mt-5 flex flex-wrap gap-3">
                 <Link
-                  to={`${managedBasePath}/batches/${batch.importBatchId}`}
+                  to={`/agent-dash/${batch.importBatchId}`}
                   className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
                 >
                   Open Batch
                 </Link>
-              )}
->>>>>>> Stashed changes
-            </div>
-          </article>
-        ))}
+                <button
+                  type="button"
+                  onClick={() => handleHideBatch(batch.importBatchId)}
+                  disabled={Boolean(batchActionState[String(batch.importBatchId)])}
+                  className="rounded-xl border border-red-200 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {batchActionState[String(batch.importBatchId)] === 'completing'
+                    ? 'Completing...'
+                    : 'Completed'}
+                </button>
+              </div>
+            </article>
+          ))}
 
-        {batches.length === 0 && (
-          <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-sm text-slate-500">
-            No active datasets assigned.
-          </div>
-        )}
+          {batches.length === 0 && (
+            <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-sm text-slate-500">
+              No active datasets assigned.
+            </div>
+          )}
         </div>
       </section>
 
