@@ -7,6 +7,11 @@ export const fetchTeamLeadDashboard = async (params) => {
   return response.data;
 };
 
+export const fetchAgentSelfDashboard = async (params) => {
+  const response = await axiosPrivate.get(`${DASHBOARD_BASE}/agent-self`, { params });
+  return response.data;
+};
+
 export const fetchSuperAdminDashboard = async (params) => {
   const response = await axiosPrivate.get(`${DASHBOARD_BASE}/super-admin`, { params });
   return response.data;

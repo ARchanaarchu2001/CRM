@@ -65,6 +65,7 @@ const AgentQueuePage = () => {
   const [message, setMessage] = useState('');
   const [saveState, setSaveState] = useState({});
   const [copiedContact, setCopiedContact] = useState('');
+  const [pipelineDraft, setPipelineDraft] = useState(null);
   const timersRef = useRef(new Map());
 
   const loadAssignments = async () => {
@@ -99,6 +100,11 @@ const AgentQueuePage = () => {
 
   const contactHeader = visibleAssignments[0]?.lead?.contactColumn || 'Contact';
   const visibleReadOnlyHeaders = readOnlyHeaders.filter((header) => header !== contactHeader);
+
+  const findDefaultNameColumn = (headers = []) =>
+    headers.find((header) => /^(name|customer name|lead name|full name)$/i.test(header)) ||
+    headers.find((header) => /name/i.test(header)) ||
+    '';
 
   const queueAutosave = (assignment) => {
     const existingTimer = timersRef.current.get(assignment._id);
@@ -175,6 +181,69 @@ const AgentQueuePage = () => {
     }
   };
 
+  const openPipelineDraft = (assignment) => {
+    const sourceHeaders = [contactHeader, ...visibleReadOnlyHeaders];
+    const defaultNameColumn = assignment.pipelineNameColumn || findDefaultNameColumn(sourceHeaders);
+    const defaultContactColumn = assignment.pipelineContactColumn || contactHeader;
+
+    setPipelineDraft({
+      assignmentId: assignment._id,
+      nameColumn: defaultNameColumn,
+      contactColumn: defaultContactColumn,
+      followUpDate: assignment.pipelineFollowUpDate || '',
+      note: assignment.pipelineNotes || '',
+      isAdded: Boolean(assignment.inPipeline),
+    });
+  };
+
+  const handlePipelineDraftChange = (field, value) => {
+    setPipelineDraft((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  };
+
+  const submitPipelineDraft = () => {
+    if (!pipelineDraft?.assignmentId) {
+      return;
+    }
+
+    const assignment = assignments.find((item) => item._id === pipelineDraft.assignmentId);
+    if (!assignment) {
+      setMessage('Could not find the row to add into pipeline.');
+      return;
+    }
+
+    if (!pipelineDraft.followUpDate) {
+      setMessage('Choose a follow-up date before adding the row to pipeline.');
+      return;
+    }
+
+    const lead = assignment.lead || {};
+    const pipelineDisplayName = String(lead.rawData?.[pipelineDraft.nameColumn] || '').trim();
+    const pipelineDisplayContact = formatContactDisplay(
+      lead.rawData?.[pipelineDraft.contactColumn] || lead.contactNumber || ''
+    );
+
+    const nextAssignment = {
+      ...assignment,
+      inPipeline: true,
+      pipelineFollowUpDate: pipelineDraft.followUpDate,
+      pipelineNotes: pipelineDraft.note,
+      pipelineNameColumn: pipelineDraft.nameColumn,
+      pipelineContactColumn: pipelineDraft.contactColumn,
+      pipelineDisplayName,
+      pipelineDisplayContact,
+    };
+
+    setAssignments((current) =>
+      current.map((item) => (item._id === assignment._id ? nextAssignment : item))
+    );
+    queueAutosave(nextAssignment);
+    setPipelineDraft(null);
+    setMessage('Added to pipeline.');
+  };
+
   return (
     <div className="space-y-6">
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -201,9 +270,100 @@ const AgentQueuePage = () => {
         {message && <p className="mt-4 text-sm text-slate-600">{message}</p>}
       </section>
 
+      {pipelineDraft && (
+        <section className="rounded-2xl border border-amber-200 bg-amber-50 p-6 shadow-sm">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <h3 className="text-lg font-semibold text-slate-900">Add To Pipeline</h3>
+              <p className="mt-2 text-sm text-slate-600">
+                Choose one name column, one contact column, a follow-up date, and an optional note for the pipeline template.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setPipelineDraft(null)}
+              className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-white"
+            >
+              Close
+            </button>
+          </div>
+
+          <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <label className="text-sm font-medium text-slate-700">
+              Name Column
+              <select
+                value={pipelineDraft.nameColumn}
+                onChange={(event) => handlePipelineDraftChange('nameColumn', event.target.value)}
+                className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2"
+              >
+                <option value="">Select name column</option>
+                {[contactHeader, ...visibleReadOnlyHeaders].map((header) => (
+                  <option key={header} value={header}>
+                    {header}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="text-sm font-medium text-slate-700">
+              Contact Column
+              <select
+                value={pipelineDraft.contactColumn}
+                onChange={(event) => handlePipelineDraftChange('contactColumn', event.target.value)}
+                className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2"
+              >
+                {[contactHeader, ...visibleReadOnlyHeaders].map((header) => (
+                  <option key={header} value={header}>
+                    {header}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="text-sm font-medium text-slate-700">
+              Follow-up Date
+              <input
+                type="date"
+                value={pipelineDraft.followUpDate}
+                onChange={(event) => handlePipelineDraftChange('followUpDate', event.target.value)}
+                className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2"
+              />
+            </label>
+
+            <label className="text-sm font-medium text-slate-700">
+              Pipeline Note
+              <input
+                type="text"
+                value={pipelineDraft.note}
+                onChange={(event) => handlePipelineDraftChange('note', event.target.value)}
+                placeholder="Optional note"
+                className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2"
+              />
+            </label>
+          </div>
+
+          <div className="mt-5 flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={submitPipelineDraft}
+              className="rounded-xl bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700"
+            >
+              Save To Pipeline
+            </button>
+            <button
+              type="button"
+              onClick={() => setPipelineDraft(null)}
+              className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-white"
+            >
+              Cancel
+            </button>
+          </div>
+        </section>
+      )}
+
       <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="overflow-auto">
-          <table className="min-w-[1900px] divide-y divide-slate-200 text-sm">
+          <table className="min-w-[2050px] divide-y divide-slate-200 text-sm">
             <thead className="sticky top-0 z-10 bg-slate-100">
               <tr>
                 <th className="sticky left-0 z-30 border-r border-slate-200 bg-slate-100 px-3 py-3 text-left font-semibold text-slate-700 shadow-[6px_0_8px_-8px_rgba(15,23,42,0.28)]">
@@ -224,6 +384,7 @@ const AgentQueuePage = () => {
                 <th className="px-3 py-3 text-left font-semibold text-slate-700">Not Interested Remarks</th>
                 <th className="px-3 py-3 text-left font-semibold text-slate-700">Agent Notes</th>
                 <th className="px-3 py-3 text-left font-semibold text-slate-700">Status</th>
+                <th className="px-3 py-3 text-left font-semibold text-slate-700">Pipeline</th>
                 <th className="px-3 py-3 text-left font-semibold text-slate-700">Save State</th>
               </tr>
             </thead>
@@ -297,6 +458,15 @@ const AgentQueuePage = () => {
                         <option value="submitted">Submitted</option>
                         <option value="activated">Activated</option>
                       </select>
+                    </td>
+                    <td className="px-3 py-2">
+                      <button
+                        type="button"
+                        onClick={() => openPipelineDraft(assignment)}
+                        className="rounded-xl border border-amber-200 px-3 py-2 text-xs font-medium text-amber-700 hover:bg-amber-50"
+                      >
+                        {assignment.inPipeline ? 'Added' : 'Add'}
+                      </button>
                     </td>
                     <td className="px-3 py-2 text-xs text-slate-500">
                       {saveState[assignment._id] === 'saving' && 'Saving...'}

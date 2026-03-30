@@ -43,6 +43,8 @@ const AgentPipelinePage = () => {
   const [message, setMessage] = useState('');
   const [copiedContact, setCopiedContact] = useState('');
   const [saveState, setSaveState] = useState({});
+  const [removingIds, setRemovingIds] = useState({});
+  const [viewFilter, setViewFilter] = useState('all');
   const [columnFilters, setColumnFilters] = useState({});
   const [sortConfig, setSortConfig] = useState({ key: 'pipelineFollowUpDate', direction: 'asc' });
   const timersRef = useRef(new Map());
@@ -70,6 +72,14 @@ const AgentPipelinePage = () => {
 
   const filteredAssignments = useMemo(() => {
     const filtered = assignments.filter((assignment) => {
+      if (viewFilter === 'due_today' && !assignment.isDueToday) {
+        return false;
+      }
+
+      if (viewFilter === 'overdue' && !assignment.isOverdue) {
+        return false;
+      }
+
       const checks = [
         ['contact', assignment.pipelineDisplayContact || assignment.lead?.contactNumber],
         ['name', assignment.pipelineDisplayName],
@@ -103,7 +113,7 @@ const AgentPipelinePage = () => {
         ? leftValue.localeCompare(rightValue)
         : rightValue.localeCompare(leftValue);
     });
-  }, [assignments, columnFilters, sortConfig]);
+  }, [assignments, columnFilters, sortConfig, viewFilter]);
 
   const updateColumnFilter = (key, value) => {
     setColumnFilters((current) => ({
@@ -203,9 +213,65 @@ const AgentPipelinePage = () => {
     }
   };
 
-  const removeFromPipeline = (assignment) => {
-    handleFieldChange(assignment._id, 'inPipeline', false);
-    handleFieldChange(assignment._id, 'pipelineFollowUpDate', '');
+  const removeFromPipeline = async (assignment) => {
+    const existingTimer = timersRef.current.get(assignment._id);
+    if (existingTimer) {
+      clearTimeout(existingTimer);
+      timersRef.current.delete(assignment._id);
+    }
+
+    setRemovingIds((current) => ({
+      ...current,
+      [assignment._id]: true,
+    }));
+
+    try {
+      await updateAssignment(assignment._id, {
+        status: assignment.status,
+        contactabilityStatus: assignment.contactabilityStatus,
+        callAttempt1Date: assignment.callAttempt1Date,
+        callAttempt2Date: assignment.callAttempt2Date,
+        callingRemark: assignment.callingRemark,
+        interestedRemark: assignment.interestedRemark,
+        notInterestedRemark: assignment.notInterestedRemark,
+        agentNotes: assignment.agentNotes,
+        inPipeline: false,
+        pipelineFollowUpDate: '',
+        pipelineNameColumn: assignment.pipelineNameColumn,
+        pipelineContactColumn: assignment.pipelineContactColumn,
+        pipelineDisplayName: assignment.pipelineDisplayName,
+        pipelineDisplayContact: assignment.pipelineDisplayContact,
+        pipelineNotes: assignment.pipelineNotes,
+      });
+
+      setAssignments((current) =>
+        current.filter((item) => item._id !== assignment._id)
+      );
+      setSummary((current) => ({
+        dueTodayCount:
+          assignment.isDueToday && current.dueTodayCount > 0
+            ? current.dueTodayCount - 1
+            : current.dueTodayCount,
+        overdueCount:
+          assignment.isOverdue && current.overdueCount > 0
+            ? current.overdueCount - 1
+            : current.overdueCount,
+      }));
+      setSaveState((current) => {
+        const nextState = { ...current };
+        delete nextState[assignment._id];
+        return nextState;
+      });
+      setMessage('Removed from pipeline');
+    } catch (error) {
+      setMessage(error.response?.data?.message || 'Could not remove pipeline row');
+    } finally {
+      setRemovingIds((current) => {
+        const nextState = { ...current };
+        delete nextState[assignment._id];
+        return nextState;
+      });
+    }
   };
 
   return (
@@ -228,10 +294,42 @@ const AgentPipelinePage = () => {
         </div>
 
         <div className="mt-5 flex flex-wrap gap-3 text-sm">
-          <div className="rounded-2xl bg-amber-50 px-4 py-3 text-amber-800">{summary.dueTodayCount} due today</div>
-          <div className="rounded-2xl bg-rose-50 px-4 py-3 text-rose-800">{summary.overdueCount} overdue</div>
-          <div className="rounded-2xl bg-slate-50 px-4 py-3 text-slate-700">{assignments.length} total in pipeline</div>
-          <div className="rounded-2xl bg-slate-50 px-4 py-3 text-slate-700">{filteredAssignments.length} visible</div>
+          <button
+            type="button"
+            onClick={() => setViewFilter('due_today')}
+            className={`rounded-2xl px-4 py-3 text-left transition ${
+              viewFilter === 'due_today'
+                ? 'bg-amber-200 text-amber-950 ring-2 ring-amber-400'
+                : 'bg-amber-50 text-amber-800 hover:bg-amber-100'
+            }`}
+          >
+            {summary.dueTodayCount} due today
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewFilter('overdue')}
+            className={`rounded-2xl px-4 py-3 text-left transition ${
+              viewFilter === 'overdue'
+                ? 'bg-rose-200 text-rose-950 ring-2 ring-rose-400'
+                : 'bg-rose-50 text-rose-800 hover:bg-rose-100'
+            }`}
+          >
+            {summary.overdueCount} overdue
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewFilter('all')}
+            className={`rounded-2xl px-4 py-3 text-left transition ${
+              viewFilter === 'all'
+                ? 'bg-slate-200 text-slate-950 ring-2 ring-slate-400'
+                : 'bg-slate-50 text-slate-700 hover:bg-slate-100'
+            }`}
+          >
+            {assignments.length} total in pipeline
+          </button>
+          <div className="rounded-2xl bg-slate-50 px-4 py-3 text-slate-700">
+            Showing {filteredAssignments.length} rows
+          </div>
         </div>
 
         {message && <p className="mt-4 text-sm text-slate-600">{message}</p>}
@@ -455,9 +553,10 @@ const AgentPipelinePage = () => {
                       <button
                         type="button"
                         onClick={() => removeFromPipeline(assignment)}
-                        className="rounded-xl border border-slate-300 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                        disabled={Boolean(removingIds[assignment._id])}
+                        className="rounded-xl border border-slate-300 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
                       >
-                        Return To Batch
+                        {removingIds[assignment._id] ? 'Removing...' : 'Remove From Pipeline'}
                       </button>
                     </td>
                   </tr>
