@@ -88,6 +88,10 @@ const TeamLeadDash = () => {
     });
   };
 
+  const handleOpenAgentDashboard = (agentRow) => {
+    navigate(`/team-lead/agents/${agentRow.agentId}/dashboard`);
+  };
+
   const handleToggleStatus = async (agentRow) => {
     const actionLabel = agentRow.isActive ? 'deactivate' : 'activate';
     if (!window.confirm(`Are you sure you want to ${actionLabel} ${agentRow.agentName}?`)) {
@@ -133,10 +137,10 @@ const TeamLeadDash = () => {
   };
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto py-6">
-      <div className="flex flex-col gap-4 border-b border-slate-200 pb-5 sm:flex-row sm:items-center sm:justify-between">
+    <div className="mx-auto max-w-7xl space-y-4 py-4 sm:space-y-6 sm:py-6">
+      <div className="flex flex-col gap-4 border-b border-slate-200 pb-4 sm:flex-row sm:items-center sm:justify-between sm:pb-5">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-900">Team Lead Performance Dashboard</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">Team Lead Performance Dashboard</h1>
           <p className="mt-1 text-sm text-slate-500">
             Compare agents by output, review team submission volume, and manage a selected agent from one focused workspace.
           </p>
@@ -144,7 +148,7 @@ const TeamLeadDash = () => {
 
         <button
           onClick={() => setShowCreateForm(!showCreateForm)}
-          className={`rounded-lg px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 ${
+          className={`w-full rounded-lg px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 sm:w-auto ${
             showCreateForm ? 'bg-slate-500 hover:bg-slate-600 focus:ring-slate-500' : 'bg-indigo-600 hover:bg-indigo-700 focus:ring-indigo-500'
           }`}
         >
@@ -158,7 +162,7 @@ const TeamLeadDash = () => {
         </div>
       )}
 
-      <section className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm">
+      <section className="rounded-[1.5rem] border border-slate-200 bg-white p-4 shadow-sm sm:rounded-[2rem] sm:p-5">
         <div className="mb-4">
           <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Dashboard Filters</p>
           <h2 className="mt-2 text-lg font-semibold text-slate-900">Team Dashboard Controls</h2>
@@ -174,18 +178,18 @@ const TeamLeadDash = () => {
       )}
 
       {error ? (
-        <div className="rounded-3xl border border-rose-200 bg-rose-50 p-6 text-rose-700">{error}</div>
+        <div className="rounded-[1.5rem] border border-rose-200 bg-rose-50 p-5 text-rose-700 sm:rounded-3xl sm:p-6">{error}</div>
       ) : isLoading && !dashboard ? (
-        <div className="rounded-3xl border border-slate-200 bg-white p-10 text-center text-slate-500 shadow-sm">
+        <div className="rounded-[1.5rem] border border-slate-200 bg-white p-8 text-center text-slate-500 shadow-sm sm:rounded-3xl sm:p-10">
           Loading team analytics...
         </div>
       ) : (
         <>
-          <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="rounded-[1.5rem] border border-slate-200 bg-white p-4 shadow-sm sm:rounded-3xl sm:p-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Current Scope</p>
-                <h2 className="mt-2 text-xl font-semibold text-slate-900">Team Overview</h2>
+                <h2 className="mt-2 text-lg font-semibold text-slate-900 sm:text-xl">Team Overview</h2>
                 <p className="mt-1 text-sm text-slate-500">
                   Showing analytics for {getFilterBadgeLabel(dashboard?.filter)} across your managed agents.
                 </p>
@@ -220,6 +224,7 @@ const TeamLeadDash = () => {
             selectedAgentId={selectedAgent?.agentId || ''}
             onSelectAgent={setSelectedAgent}
             onViewDetails={handleViewDetails}
+            onOpenAgentDashboard={handleOpenAgentDashboard}
           />
         </>
       )}

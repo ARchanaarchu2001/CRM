@@ -1,12 +1,14 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
+  fetchManagedAgentBatchView,
   fetchMyAssignmentBatches,
   fetchMyAssignments,
   hideAssignmentBatch,
   updateAssignment,
 } from '../api/leads.js';
 import { formatContactDisplay } from '../utils/contactNumber.js';
+import { connectSocket, socket } from '../utils/socketClient.js';
 
 const AUTOSAVE_DELAY_MS = 700;
 const DEFAULT_REMARK_CONFIG = {
@@ -57,7 +59,8 @@ const findDefaultNameColumn = (headers = []) =>
 const normalizeSortValue = (value) => String(value || '').toLowerCase();
 
 const AgentBatchPage = () => {
-  const { batchId } = useParams();
+  const { batchId, agentId } = useParams();
+  const isManagedView = Boolean(agentId);
   const navigate = useNavigate();
   const [batches, setBatches] = useState([]);
   const [assignments, setAssignments] = useState([]);
@@ -70,6 +73,10 @@ const AgentBatchPage = () => {
   const timersRef = useRef(new Map());
 
   const loadBatches = async () => {
+    if (isManagedView) {
+      return;
+    }
+
     const data = await fetchMyAssignmentBatches();
     setBatches(data.batches || []);
   };
@@ -77,6 +84,13 @@ const AgentBatchPage = () => {
   const loadAssignments = async () => {
     if (!batchId) {
       setAssignments([]);
+      return;
+    }
+
+    if (isManagedView) {
+      const data = await fetchManagedAgentBatchView(agentId, batchId);
+      setBatches(data.view?.batch ? [data.view.batch] : []);
+      setAssignments(data.view?.assignments || []);
       return;
     }
 
@@ -88,11 +102,33 @@ const AgentBatchPage = () => {
 
   useEffect(() => {
     loadBatches();
-  }, [batchId]);
+  }, [batchId, agentId]);
 
   useEffect(() => {
     loadAssignments();
-  }, [batchId]);
+  }, [batchId, agentId]);
+
+  useEffect(() => {
+    connectSocket();
+
+    const handleAssignmentUpdated = (payload) => {
+      if (String(payload?.batchId || '') !== String(batchId || '')) {
+        return;
+      }
+
+      if (isManagedView && String(payload?.agentId || '') !== String(agentId || '')) {
+        return;
+      }
+
+      loadAssignments();
+    };
+
+    socket.on('assignmentUpdated', handleAssignmentUpdated);
+
+    return () => {
+      socket.off('assignmentUpdated', handleAssignmentUpdated);
+    };
+  }, [batchId, agentId, isManagedView]);
 
   useEffect(() => {
     return () => {
@@ -207,6 +243,10 @@ const AgentBatchPage = () => {
   };
 
   const queueAutosave = (assignment) => {
+    if (isManagedView) {
+      return;
+    }
+
     const existingTimer = timersRef.current.get(assignment._id);
     if (existingTimer) {
       clearTimeout(existingTimer);
@@ -253,6 +293,10 @@ const AgentBatchPage = () => {
   };
 
   const handleFieldChange = (assignmentId, field, value) => {
+    if (isManagedView) {
+      return;
+    }
+
     setAssignments((current) =>
       current.map((assignment) => {
         if (assignment._id !== assignmentId) {
@@ -267,6 +311,10 @@ const AgentBatchPage = () => {
   };
 
   const handleHideBatch = async () => {
+    if (isManagedView) {
+      return;
+    }
+
     if (!batchId) {
       return;
     }
@@ -294,6 +342,10 @@ const AgentBatchPage = () => {
   };
 
   const openPipelineDraft = (assignment) => {
+    if (isManagedView) {
+      return;
+    }
+
     const sourceHeaders = [contactHeader, ...visibleReadOnlyHeaders];
     const defaultNameColumn = assignment.pipelineNameColumn || findDefaultNameColumn(sourceHeaders);
     const defaultContactColumn = assignment.pipelineContactColumn || contactHeader;
@@ -316,6 +368,10 @@ const AgentBatchPage = () => {
   };
 
   const submitPipelineDraft = () => {
+    if (isManagedView) {
+      return;
+    }
+
     if (!pipelineDraft?.assignmentId) {
       return;
     }
@@ -357,10 +413,55 @@ const AgentBatchPage = () => {
   };
 
   const handleAttemptChange = (assignment, field, part, value) => {
+    if (isManagedView) {
+      return;
+    }
+
     const currentParts = splitAttemptValue(assignment[field]);
     const nextDate = part === 'date' ? value : currentParts.date;
     const nextTime = part === 'time' ? value : currentParts.time;
     handleFieldChange(assignment._id, field, buildAttemptValue(nextDate, nextTime));
+  };
+
+  const getFieldHistoryEntries = (assignment, fieldKey) =>
+    [...(assignment.fieldChangeHistory || [])]
+      .filter((entry) => entry.fieldKey === fieldKey)
+      .sort((left, right) => new Date(right.changedAt) - new Date(left.changedAt))
+      .slice(0, 3);
+
+  const renderManagedFieldHistory = (assignment, fieldKey, currentValue) => {
+    const historyEntries = getFieldHistoryEntries(assignment, fieldKey);
+
+    return (
+      <div className="min-w-[180px] space-y-2">
+        <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900">
+          {currentValue || 'Empty'}
+        </div>
+        <details className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+          <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-indigo-700">
+            History {historyEntries.length ? `(${historyEntries.length})` : ''}
+          </summary>
+          <div className="mt-2 space-y-2">
+            {historyEntries.length ? (
+              historyEntries.map((entry) => (
+                <div key={entry._id} className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                  <p className="font-semibold text-slate-700">
+                    {new Date(entry.changedAt).toLocaleString('en-US', {
+                      dateStyle: 'medium',
+                      timeStyle: 'short',
+                    })}
+                  </p>
+                  <p className="mt-1">Previous: <span className="font-medium text-slate-900">{entry.oldValue || 'Empty'}</span></p>
+                  <p>Marked: <span className="font-medium text-slate-900">{entry.newValue || 'Empty'}</span></p>
+                </div>
+              ))
+            ) : (
+              <p className="text-xs text-slate-500">No history yet.</p>
+            )}
+          </div>
+        </details>
+      </div>
+    );
   };
 
   return (
@@ -370,7 +471,9 @@ const AgentBatchPage = () => {
           <div>
             <h2 className="text-xl font-semibold text-slate-900">{selectedBatch?.batchName || 'Agent Batch'}</h2>
             <p className="mt-2 text-sm text-slate-600">
-              Contact number stays fixed on the left. Source data comes next. Your editable calling fields stay on the right.
+              {isManagedView
+                ? 'This is the actual agent lead sheet in read-only mode. Team Leads can inspect the same batch view without updating any row.'
+                : 'Contact number stays fixed on the left. Source data comes next. Your editable calling fields stay on the right.'}
             </p>
           </div>
 
@@ -382,13 +485,15 @@ const AgentBatchPage = () => {
             >
               Back
             </button>
-            <button
-              type="button"
-              onClick={handleHideBatch}
-              className="rounded-xl border border-red-200 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
-            >
-              Hide This Batch
-            </button>
+            {!isManagedView && (
+              <button
+                type="button"
+                onClick={handleHideBatch}
+                className="rounded-xl border border-red-200 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
+              >
+                Hide This Batch
+              </button>
+            )}
           </div>
         </div>
 
@@ -411,7 +516,7 @@ const AgentBatchPage = () => {
         {message && <p className="mt-4 text-sm text-slate-600">{message}</p>}
       </section>
 
-      {pipelineDraft && (
+      {!isManagedView && pipelineDraft && (
         <section className="rounded-2xl border border-amber-200 bg-amber-50 p-6 shadow-sm">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
@@ -497,7 +602,7 @@ const AgentBatchPage = () => {
 
       <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="overflow-auto">
-          <table className="min-w-[1600px] divide-y divide-slate-200 text-sm">
+          <table className="min-w-[2200px] divide-y divide-slate-200 text-sm">
             <thead className="sticky top-0 z-10 bg-slate-100">
               <tr>
                 <th className="sticky left-0 z-30 border-r border-slate-200 bg-slate-100 px-3 py-3 text-left font-semibold text-slate-700 shadow-[6px_0_8px_-8px_rgba(15,23,42,0.28)]">
@@ -679,141 +784,187 @@ const AgentBatchPage = () => {
                       </td>
                     ))}
                     <td className="px-3 py-2">
-                      <select
-                        value={assignment.contactabilityStatus || ''}
-                        onChange={(event) =>
-                          handleFieldChange(assignment._id, 'contactabilityStatus', event.target.value)
-                        }
-                        className="w-[170px] rounded-lg border border-slate-300 px-2 py-1"
-                      >
-                        <option value="">Select</option>
-                        {(remarks.contactabilityStatuses || []).map((status) => (
-                          <option key={status} value={status}>
-                            {status}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                    <td className="px-3 py-2">
-                      <div className="flex min-w-[220px] gap-2">
-                        <input
-                          type="date"
-                          value={splitAttemptValue(assignment.callAttempt1Date).date}
-                          onChange={(event) => handleAttemptChange(assignment, 'callAttempt1Date', 'date', event.target.value)}
-                          className="w-[135px] rounded-lg border border-slate-300 px-2 py-1"
-                        />
-                        <input
-                          type="time"
-                          value={splitAttemptValue(assignment.callAttempt1Date).time}
-                          onChange={(event) => handleAttemptChange(assignment, 'callAttempt1Date', 'time', event.target.value)}
-                          className="w-[95px] rounded-lg border border-slate-300 px-2 py-1"
-                        />
-                      </div>
-                    </td>
-                    <td className="px-3 py-2">
-                      <div className="flex min-w-[220px] gap-2">
-                        <input
-                          type="date"
-                          value={splitAttemptValue(assignment.callAttempt2Date).date}
-                          onChange={(event) => handleAttemptChange(assignment, 'callAttempt2Date', 'date', event.target.value)}
-                          className="w-[135px] rounded-lg border border-slate-300 px-2 py-1"
-                        />
-                        <input
-                          type="time"
-                          value={splitAttemptValue(assignment.callAttempt2Date).time}
-                          onChange={(event) => handleAttemptChange(assignment, 'callAttempt2Date', 'time', event.target.value)}
-                          className="w-[95px] rounded-lg border border-slate-300 px-2 py-1"
-                        />
-                      </div>
-                    </td>
-                    <td className="px-3 py-2">
-                      <select
-                        value={assignment.callingRemark || ''}
-                        onChange={(event) => handleFieldChange(assignment._id, 'callingRemark', event.target.value)}
-                        className="w-[180px] rounded-lg border border-slate-300 px-2 py-1"
-                      >
-                        <option value="">Select</option>
-                        {remarks.callingRemarks.map((remark) => (
-                          <option key={remark} value={remark}>
-                            {remark}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                    <td className="px-3 py-2">
-                      <select
-                        value={assignment.interestedRemark || ''}
-                        onChange={(event) => handleFieldChange(assignment._id, 'interestedRemark', event.target.value)}
-                        className="w-[180px] rounded-lg border border-slate-300 px-2 py-1"
-                      >
-                        <option value="">Select</option>
-                        {remarks.interestedRemarks.map((remark) => (
-                          <option key={remark} value={remark}>
-                            {remark}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                    <td className="px-3 py-2">
-                      <select
-                        value={assignment.notInterestedRemark || ''}
-                        onChange={(event) =>
-                          handleFieldChange(assignment._id, 'notInterestedRemark', event.target.value)
-                        }
-                        className="w-[200px] rounded-lg border border-slate-300 px-2 py-1"
-                      >
-                        <option value="">Select</option>
-                        {remarks.notInterestedRemarks.map((remark) => (
-                          <option key={remark} value={remark}>
-                            {remark}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                    <td className="px-3 py-2">
-                      <input
-                        type="text"
-                        value={assignment.agentNotes || ''}
-                        onChange={(event) => handleFieldChange(assignment._id, 'agentNotes', event.target.value)}
-                        className="w-[220px] rounded-lg border border-slate-300 px-2 py-1"
-                      />
-                    </td>
-                    <td className="px-3 py-2">
-                      <select
-                        value={assignment.status || ''}
-                        onChange={(event) => handleFieldChange(assignment._id, 'status', event.target.value)}
-                        className="w-[140px] rounded-lg border border-slate-300 px-2 py-1"
-                      >
-                        <option value="">Select</option>
-                        <option value="submitted">Submitted</option>
-                        <option value="activated">Activated</option>
-                        </select>
-                    </td>
-                    <td className="px-3 py-2">
-                      <div className="flex min-w-[220px] gap-2">
-                        <input
-                          type="date"
-                          value={assignment.pipelineFollowUpDate || ''}
+                      {isManagedView ? (
+                        renderManagedFieldHistory(
+                          assignment,
+                          'contactabilityStatus',
+                          assignment.contactabilityStatus
+                        )
+                      ) : (
+                        <select
+                          value={assignment.contactabilityStatus || ''}
                           onChange={(event) =>
-                            handleFieldChange(assignment._id, 'pipelineFollowUpDate', event.target.value)
+                            handleFieldChange(assignment._id, 'contactabilityStatus', event.target.value)
                           }
-                          className="w-[145px] rounded-lg border border-slate-300 px-2 py-1"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => openPipelineDraft(assignment)}
-                          className={`rounded-lg px-3 py-1 text-xs font-medium text-white ${
-                            assignment.inPipeline ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-amber-600 hover:bg-amber-700'
-                          }`}
+                          className="w-[170px] rounded-lg border border-slate-300 px-2 py-1"
                         >
-                          {assignment.inPipeline ? 'Added' : 'Add'}
-                        </button>
-                      </div>
+                          <option value="">Select</option>
+                          {(remarks.contactabilityStatuses || []).map((status) => (
+                            <option key={status} value={status}>
+                              {status}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                    </td>
+                    <td className="px-3 py-2">
+                      {isManagedView ? (
+                        renderManagedFieldHistory(assignment, 'callAttempt1Date', assignment.callAttempt1Date)
+                      ) : (
+                        <div className="flex min-w-[220px] gap-2">
+                          <input
+                            type="date"
+                            value={splitAttemptValue(assignment.callAttempt1Date).date}
+                            onChange={(event) => handleAttemptChange(assignment, 'callAttempt1Date', 'date', event.target.value)}
+                            className="w-[135px] rounded-lg border border-slate-300 px-2 py-1"
+                          />
+                          <input
+                            type="time"
+                            value={splitAttemptValue(assignment.callAttempt1Date).time}
+                            onChange={(event) => handleAttemptChange(assignment, 'callAttempt1Date', 'time', event.target.value)}
+                            className="w-[95px] rounded-lg border border-slate-300 px-2 py-1"
+                          />
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-3 py-2">
+                      {isManagedView ? (
+                        renderManagedFieldHistory(assignment, 'callAttempt2Date', assignment.callAttempt2Date)
+                      ) : (
+                        <div className="flex min-w-[220px] gap-2">
+                          <input
+                            type="date"
+                            value={splitAttemptValue(assignment.callAttempt2Date).date}
+                            onChange={(event) => handleAttemptChange(assignment, 'callAttempt2Date', 'date', event.target.value)}
+                            className="w-[135px] rounded-lg border border-slate-300 px-2 py-1"
+                          />
+                          <input
+                            type="time"
+                            value={splitAttemptValue(assignment.callAttempt2Date).time}
+                            onChange={(event) => handleAttemptChange(assignment, 'callAttempt2Date', 'time', event.target.value)}
+                            className="w-[95px] rounded-lg border border-slate-300 px-2 py-1"
+                          />
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-3 py-2">
+                      {isManagedView ? (
+                        renderManagedFieldHistory(assignment, 'callingRemark', assignment.callingRemark)
+                      ) : (
+                        <select
+                          value={assignment.callingRemark || ''}
+                          onChange={(event) => handleFieldChange(assignment._id, 'callingRemark', event.target.value)}
+                          className="w-[180px] rounded-lg border border-slate-300 px-2 py-1"
+                        >
+                          <option value="">Select</option>
+                          {remarks.callingRemarks.map((remark) => (
+                            <option key={remark} value={remark}>
+                              {remark}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                    </td>
+                    <td className="px-3 py-2">
+                      {isManagedView ? (
+                        renderManagedFieldHistory(assignment, 'interestedRemark', assignment.interestedRemark)
+                      ) : (
+                        <select
+                          value={assignment.interestedRemark || ''}
+                          onChange={(event) => handleFieldChange(assignment._id, 'interestedRemark', event.target.value)}
+                          className="w-[180px] rounded-lg border border-slate-300 px-2 py-1"
+                        >
+                          <option value="">Select</option>
+                          {remarks.interestedRemarks.map((remark) => (
+                            <option key={remark} value={remark}>
+                              {remark}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                    </td>
+                    <td className="px-3 py-2">
+                      {isManagedView ? (
+                        renderManagedFieldHistory(assignment, 'notInterestedRemark', assignment.notInterestedRemark)
+                      ) : (
+                        <select
+                          value={assignment.notInterestedRemark || ''}
+                          onChange={(event) =>
+                            handleFieldChange(assignment._id, 'notInterestedRemark', event.target.value)
+                          }
+                          className="w-[200px] rounded-lg border border-slate-300 px-2 py-1"
+                        >
+                          <option value="">Select</option>
+                          {remarks.notInterestedRemarks.map((remark) => (
+                            <option key={remark} value={remark}>
+                              {remark}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                    </td>
+                    <td className="px-3 py-2">
+                      {isManagedView ? (
+                        renderManagedFieldHistory(assignment, 'agentNotes', assignment.agentNotes)
+                      ) : (
+                        <input
+                          type="text"
+                          value={assignment.agentNotes || ''}
+                          onChange={(event) => handleFieldChange(assignment._id, 'agentNotes', event.target.value)}
+                          className="w-[220px] rounded-lg border border-slate-300 px-2 py-1"
+                        />
+                      )}
+                    </td>
+                    <td className="px-3 py-2">
+                      {isManagedView ? (
+                        renderManagedFieldHistory(assignment, 'status', assignment.status)
+                      ) : (
+                        <select
+                          value={assignment.status || ''}
+                          onChange={(event) => handleFieldChange(assignment._id, 'status', event.target.value)}
+                          className="w-[140px] rounded-lg border border-slate-300 px-2 py-1"
+                        >
+                          <option value="">Select</option>
+                          <option value="submitted">Submitted</option>
+                          <option value="activated">Activated</option>
+                        </select>
+                      )}
+                    </td>
+                    <td className="px-3 py-2">
+                      {isManagedView ? (
+                        renderManagedFieldHistory(
+                          assignment,
+                          'pipeline',
+                          assignment.inPipeline
+                            ? `In Pipeline${assignment.pipelineFollowUpDate ? ` - ${assignment.pipelineFollowUpDate}` : ''}`
+                            : assignment.pipelineFollowUpDate || 'Not In Pipeline'
+                        )
+                      ) : (
+                        <div className="flex min-w-[220px] gap-2">
+                          <input
+                            type="date"
+                            value={assignment.pipelineFollowUpDate || ''}
+                            onChange={(event) =>
+                              handleFieldChange(assignment._id, 'pipelineFollowUpDate', event.target.value)
+                            }
+                            className="w-[145px] rounded-lg border border-slate-300 px-2 py-1"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => openPipelineDraft(assignment)}
+                            className={`rounded-lg px-3 py-1 text-xs font-medium text-white ${
+                              assignment.inPipeline ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-amber-600 hover:bg-amber-700'
+                            }`}
+                          >
+                            {assignment.inPipeline ? 'Added' : 'Add'}
+                          </button>
+                        </div>
+                      )}
                     </td>
                     <td className="px-3 py-2 text-xs text-slate-500">
-                      {saveState[assignment._id] === 'saving' && 'Saving...'}
-                      {saveState[assignment._id] === 'saved' && 'Saved'}
-                      {saveState[assignment._id] === 'error' && 'Error'}
+                      {!isManagedView && saveState[assignment._id] === 'saving' && 'Saving...'}
+                      {!isManagedView && saveState[assignment._id] === 'saved' && 'Saved'}
+                      {!isManagedView && saveState[assignment._id] === 'error' && 'Error'}
                     </td>
                   </tr>
                 );

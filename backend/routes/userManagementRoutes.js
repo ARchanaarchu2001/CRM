@@ -12,6 +12,7 @@ import {
   moveAgentToTeam,
   reactivateUser,
   removeAgentFromTeam,
+  removeUserFromSystem,
   getUserById,
   updateUser,
   deactivateUser
@@ -85,7 +86,7 @@ router.get(
 
 router.get(
   '/dashboard/agents/:agentId',
-  authorizeRoles(ROLES.SUPER_ADMIN, ROLES.TEAM_LEAD),
+  authorizeRoles(ROLES.SUPER_ADMIN, ROLES.TEAM_LEAD, ROLES.DATA_ANALYST),
   getAgentPerformanceDetail
 );
 
@@ -128,6 +129,12 @@ router.patch(
   '/:id/remove-from-team',
   authorizeRoles(ROLES.SUPER_ADMIN, ROLES.TEAM_LEAD),
   removeAgentFromTeam
+);
+
+router.delete(
+  '/:id',
+  authorizeRoles(ROLES.SUPER_ADMIN, ROLES.TEAM_LEAD),
+  removeUserFromSystem
 );
 
 export default router;

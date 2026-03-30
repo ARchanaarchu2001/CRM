@@ -3,6 +3,8 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import AgentDashboard from './pages/AgentDashboard';
 import AgentBatchPage from './pages/AgentBatchPage';
 import AnalystDashboard from './pages/AnalystDashboard';
+import AnalystOverviewPage from './pages/AnalystOverviewPage';
+import AnalystAgentPerformancePage from './pages/AnalystAgentPerformancePage';
 import AnalystDatasetPage from './pages/AnalystDatasetPage';
 import AgentPipelinePage from './pages/AgentPipelinePage';
 import AgentQueuePage from './pages/AgentQueuePage';
@@ -19,6 +21,8 @@ import PersistLogin from './components/PersistLogin';
 import MainLayout from './layouts/MainLayout';
 
 import SuperAdminDash from './pages/SuperAdminDash';
+import SuperAdminConversionPage from './pages/SuperAdminConversionPage';
+import SuperAdminSettingsPage from './pages/SuperAdminSettingsPage';
 import TeamLeadDash from './pages/TeamLeadDash';
 import TeamLeadSettingsPage from './pages/TeamLeadSettingsPage';
 import TeamLeadConversionPage from './pages/TeamLeadConversionPage';
@@ -46,10 +50,14 @@ function App() {
               
               <Route element={<RoleProtectedRoute allowedRoles={['super_admin']} />}>
                 <Route path="/admin-dash" element={<SuperAdminDash />} />
+                <Route path="/admin-conversion" element={<SuperAdminConversionPage />} />
+                <Route path="/admin-settings" element={<SuperAdminSettingsPage />} />
               </Route>
               
               <Route element={<RoleProtectedRoute allowedRoles={['data_analyst', 'super_admin']} />}>
                 <Route path="/analyst-dash" element={<AnalystDashboard />} />
+                <Route path="/analyst-overview" element={<AnalystOverviewPage />} />
+                <Route path="/analyst-agent-performance" element={<AnalystAgentPerformancePage />} />
                 <Route path="/analyst-dash/:batchId" element={<AnalystDatasetPage />} />
                 <Route path="/lead-settings" element={<LeadSettingsPage />} />
               </Route>
@@ -63,8 +71,14 @@ function App() {
                 <Route path="/team-lead-conversion" element={<TeamLeadConversionPage />} />
               </Route>
 
-              <Route element={<RoleProtectedRoute allowedRoles={['team_lead', 'super_admin']} />}>
+              <Route element={<RoleProtectedRoute allowedRoles={['team_lead', 'super_admin', 'data_analyst']} />}>
                 <Route path="/agent-performance/:agentId" element={<AgentPerformanceDetailPage />} />
+                <Route path="/team-lead/agents/:agentId/dashboard" element={<AgentDashboard />} />
+                <Route path="/team-lead/agents/:agentId/batches/:batchId" element={<AgentBatchPage />} />
+                <Route path="/team-lead/agents/:agentId/pipeline" element={<AgentPipelinePage />} />
+                <Route path="/analyst/agents/:agentId/dashboard" element={<AgentDashboard />} />
+                <Route path="/analyst/agents/:agentId/batches/:batchId" element={<AgentBatchPage />} />
+                <Route path="/analyst/agents/:agentId/pipeline" element={<AgentPipelinePage />} />
               </Route>
 
               <Route element={<RoleProtectedRoute allowedRoles={['manager', 'super_admin']} />}>

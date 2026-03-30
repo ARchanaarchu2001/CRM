@@ -7,6 +7,7 @@ import {
   fetchTeams,
   moveDashboardUserToTeam,
   reactivateDashboardUser,
+  removeDashboardUser,
   removeDashboardUserFromTeam,
   updateDashboardUser,
 } from '../api/dashboard.js';
@@ -170,6 +171,25 @@ const SuperAdminSettingsPage = () => {
     }
   };
 
+  const handleRemoveUser = async (user) => {
+    if (!window.confirm(`Remove ${user.fullName} from the system? This will disable the account and remove it from active user lists.`)) {
+      return;
+    }
+
+    setActionLoadingKey(`delete-${user._id}`);
+    setBanner('');
+
+    try {
+      const response = await removeDashboardUser(user._id);
+      setBanner(response.message || `${user.fullName} was removed from the system.`);
+      await loadSettingsData();
+    } catch (removeError) {
+      setBanner(removeError.response?.data?.message || 'Failed to remove user from the system');
+    } finally {
+      setActionLoadingKey(null);
+    }
+  };
+
   return (
     <div className="space-y-6 py-6">
       <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
@@ -207,6 +227,7 @@ const SuperAdminSettingsPage = () => {
               <tbody>
                 {users.map((user) => {
                   const isAgent = user.role === 'agent';
+                  const isTeamLead = user.role === 'team_lead';
                   const teamName = user.assignedTeam || user.team?.name || 'Unassigned';
                   const teamLeadName = user.teamLead?.fullName || user.team?.lead?.fullName || 'Unassigned';
 
@@ -268,6 +289,14 @@ const SuperAdminSettingsPage = () => {
                             className="rounded-xl border border-rose-300 px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-40"
                           >
                             {actionLoadingKey === `remove-${user._id}` ? 'Removing...' : 'Remove From Team'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveUser(user)}
+                            disabled={!isTeamLead || actionLoadingKey === `delete-${user._id}`}
+                            className="rounded-xl border border-rose-400 px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            {actionLoadingKey === `delete-${user._id}` ? 'Removing...' : 'Remove Team Lead'}
                           </button>
                         </div>
                       </td>

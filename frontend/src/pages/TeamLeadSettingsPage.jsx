@@ -5,7 +5,9 @@ import {
   fetchTeamLeadDashboard,
   reactivateDashboardUser,
   removeDashboardUserFromTeam,
+  updateDashboardUser,
 } from '../api/dashboard.js';
+import EditUserProfileModal from '../components/dashboard/EditUserProfileModal.jsx';
 
 const TeamLeadSettingsPage = () => {
   const navigate = useNavigate();
@@ -14,6 +16,8 @@ const TeamLeadSettingsPage = () => {
   const [banner, setBanner] = useState('');
   const [error, setError] = useState('');
   const [actionLoadingKey, setActionLoadingKey] = useState(null);
+  const [editingUser, setEditingUser] = useState(null);
+  const [isEditSubmitting, setIsEditSubmitting] = useState(false);
 
   const loadUsers = async () => {
     setIsLoading(true);
@@ -37,6 +41,18 @@ const TeamLeadSettingsPage = () => {
     navigate(`/agent-performance/${user.agentId}?range=today`, {
       state: { from: '/team-lead-settings' },
     });
+  };
+
+  const handleOpenEditModal = (user) => {
+    setEditingUser(user);
+    setBanner('');
+  };
+
+  const handleCloseEditModal = () => {
+    if (isEditSubmitting) {
+      return;
+    }
+    setEditingUser(null);
   };
 
   const handleToggleStatus = async (user) => {
@@ -80,6 +96,26 @@ const TeamLeadSettingsPage = () => {
       setBanner(removeError.response?.data?.message || 'Failed to remove user from team');
     } finally {
       setActionLoadingKey(null);
+    }
+  };
+
+  const handleSaveProfile = async (payload) => {
+    if (!editingUser) {
+      return;
+    }
+
+    setIsEditSubmitting(true);
+    setBanner('');
+
+    try {
+      await updateDashboardUser(editingUser.agentId, payload);
+      setBanner(`${payload.fullName || editingUser.agentName} was updated successfully.`);
+      setEditingUser(null);
+      await loadUsers();
+    } catch (saveError) {
+      setBanner(saveError.response?.data?.message || 'Failed to update user profile');
+    } finally {
+      setIsEditSubmitting(false);
     }
   };
 
@@ -139,6 +175,13 @@ const TeamLeadSettingsPage = () => {
                     <td className="px-4 py-4 text-center font-semibold text-slate-900">{user.totalAssignedLeads || 0}</td>
                     <td className="px-4 py-4">
                       <div className="flex justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEditModal(user)}
+                          className="rounded-xl border border-indigo-200 px-3 py-2 text-xs font-semibold text-indigo-700 hover:bg-indigo-50"
+                        >
+                          Edit Profile
+                        </button>
                         <button type="button" onClick={() => handleViewDetails(user)} className="rounded-xl bg-slate-900 px-3 py-2 text-xs font-semibold text-white hover:bg-slate-800">
                           View Details
                         </button>
@@ -167,6 +210,19 @@ const TeamLeadSettingsPage = () => {
           </div>
         )}
       </section>
+
+      <EditUserProfileModal
+        isOpen={Boolean(editingUser)}
+        user={editingUser ? {
+          _id: editingUser.agentId,
+          fullName: editingUser.agentName,
+          email: editingUser.email,
+          role: editingUser.role,
+        } : null}
+        isSubmitting={isEditSubmitting}
+        onClose={handleCloseEditModal}
+        onSubmit={handleSaveProfile}
+      />
     </div>
   );
 };

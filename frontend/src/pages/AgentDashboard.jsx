@@ -1,15 +1,21 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { fetchAgentSelfDashboard } from '../api/dashboard.js';
 import {
+  fetchManagedAgentDashboardView,
   fetchMyAssignmentBatches,
   fetchMyAssignments,
   fetchMyPipelineSummary,
   hideAssignmentBatch,
   restoreAssignmentBatch,
 } from '../api/leads.js';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 
 const AgentDashboard = () => {
+  const { agentId } = useParams();
+  const isManagedView = Boolean(agentId);
+  const navigate = useNavigate();
+  const location = useLocation();
   const [batches, setBatches] = useState([]);
   const [completedBatches, setCompletedBatches] = useState([]);
   const [batchActionState, setBatchActionState] = useState({});
@@ -31,14 +37,46 @@ const AgentDashboard = () => {
     interested: 0,
   });
   const [message, setMessage] = useState('');
+  const [agentName, setAgentName] = useState('');
+  const managedBasePath = useMemo(() => {
+    if (!isManagedView) {
+      return '';
+    }
+
+    return location.pathname.startsWith('/analyst/')
+      ? `/analyst/agents/${agentId}`
+      : `/team-lead/agents/${agentId}`;
+  }, [agentId, isManagedView, location.pathname]);
 
   const loadBatches = async () => {
+    if (isManagedView) {
+      const data = await fetchManagedAgentDashboardView(agentId);
+      setAgentName(data.view?.agent?.fullName || '');
+      setBatches(data.view?.batches || []);
+      setQueueSummary(data.view?.queueSummary || {
+        pending: 0,
+        followUp: 0,
+        callback: 0,
+        interested: 0,
+      });
+      setPipelineSummary(data.view?.pipelineSummary || {
+        totalPipelineRows: 0,
+        dueTodayCount: 0,
+        overdueCount: 0,
+      });
+      return;
+    }
+
     const data = await fetchMyAssignmentBatches();
     setBatches(data.batches || []);
     setCompletedBatches(data.completedBatches || []);
   };
 
   const loadQueueSummary = async () => {
+    if (isManagedView) {
+      return;
+    }
+
     const data = await fetchMyAssignments();
     const assignments = data.assignments || [];
 
@@ -61,6 +99,10 @@ const AgentDashboard = () => {
   };
 
   const loadPipelineSummary = async () => {
+    if (isManagedView) {
+      return;
+    }
+
     const data = await fetchMyPipelineSummary();
     setPipelineSummary(data);
   };
@@ -99,6 +141,7 @@ const AgentDashboard = () => {
 
   useEffect(() => {
     loadBatches();
+<<<<<<< Updated upstream
     loadQueueSummary();
     loadPipelineSummary();
     loadPerformanceSummary();
@@ -144,6 +187,24 @@ const AgentDashboard = () => {
         return nextState;
       });
     }
+=======
+    if (!isManagedView) {
+      loadQueueSummary();
+      loadPipelineSummary();
+    }
+  }, [agentId]);
+
+  const handleHideBatch = async (importBatchId) => {
+    if (isManagedView) {
+      return;
+    }
+
+    await hideAssignmentBatch(importBatchId);
+    setMessage('Batch hidden from your dashboard.');
+    await loadBatches();
+    await loadQueueSummary();
+    await loadPipelineSummary();
+>>>>>>> Stashed changes
   };
 
   return (
@@ -157,11 +218,30 @@ const AgentDashboard = () => {
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
+<<<<<<< Updated upstream
             <h2 className="text-xl font-semibold text-slate-900">My Performance</h2>
             <p className="mt-2 text-sm text-slate-600">
               See your dial, submission, and activation counts for today, this week, and this month.
+=======
+            <h2 className="text-xl font-semibold text-slate-900">
+              {isManagedView ? `${agentName || 'Agent'} Dashboard` : 'My Batches'}
+            </h2>
+            <p className="mt-2 text-sm text-slate-600">
+              {isManagedView
+                ? 'This is the actual agent dashboard in read-only mode. Supervisors can inspect it, but cannot update anything here.'
+                : 'Open one batch at a time. The table will open on a separate page with source fields first and your work fields on the right.'}
+>>>>>>> Stashed changes
             </p>
           </div>
+          {isManagedView && (
+            <button
+              type="button"
+              onClick={() => navigate(-1)}
+              className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              Back
+            </button>
+          )}
         </div>
 
         <div className="mt-5 grid gap-4 lg:grid-cols-3">
@@ -206,22 +286,22 @@ const AgentDashboard = () => {
         </div>
 
         <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <Link to="/agent-queue/pending" className="rounded-2xl border border-amber-200 bg-amber-50 p-5 shadow-sm hover:bg-amber-100">
+          <div className={`rounded-2xl border border-amber-200 bg-amber-50 p-5 shadow-sm ${isManagedView ? '' : 'hover:bg-amber-100'}`}>
             <div className="text-sm font-medium text-amber-900">Pending / Undialed</div>
             <div className="mt-2 text-3xl font-bold text-amber-800">{queueSummary.pending}</div>
-          </Link>
-          <Link to="/agent-queue/follow_up" className="rounded-2xl border border-yellow-200 bg-yellow-50 p-5 shadow-sm hover:bg-yellow-100">
+          </div>
+          <div className={`rounded-2xl border border-yellow-200 bg-yellow-50 p-5 shadow-sm ${isManagedView ? '' : 'hover:bg-yellow-100'}`}>
             <div className="text-sm font-medium text-yellow-900">Follow Up</div>
             <div className="mt-2 text-3xl font-bold text-yellow-800">{queueSummary.followUp}</div>
-          </Link>
-          <Link to="/agent-queue/callback" className="rounded-2xl border border-orange-200 bg-orange-50 p-5 shadow-sm hover:bg-orange-100">
+          </div>
+          <div className={`rounded-2xl border border-orange-200 bg-orange-50 p-5 shadow-sm ${isManagedView ? '' : 'hover:bg-orange-100'}`}>
             <div className="text-sm font-medium text-orange-900">Callback</div>
             <div className="mt-2 text-3xl font-bold text-orange-800">{queueSummary.callback}</div>
-          </Link>
-          <Link to="/agent-queue/interested" className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 shadow-sm hover:bg-emerald-100">
+          </div>
+          <div className={`rounded-2xl border border-emerald-200 bg-emerald-50 p-5 shadow-sm ${isManagedView ? '' : 'hover:bg-emerald-100'}`}>
             <div className="text-sm font-medium text-emerald-900">Interested</div>
             <div className="mt-2 text-3xl font-bold text-emerald-800">{queueSummary.interested}</div>
-          </Link>
+          </div>
         </div>
       </section>
 
@@ -235,7 +315,7 @@ const AgentDashboard = () => {
           </div>
 
           <Link
-            to="/agent-pipeline"
+            to={isManagedView ? `${managedBasePath}/pipeline` : '/agent-pipeline'}
             className="rounded-xl bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700"
           >
             Open Pipeline
@@ -302,6 +382,7 @@ const AgentDashboard = () => {
             </div>
 
             <div className="mt-5 flex flex-wrap gap-3">
+<<<<<<< Updated upstream
               <Link
                 to={`/agent-dash/${batch.importBatchId}`}
                 className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
@@ -318,6 +399,33 @@ const AgentDashboard = () => {
                   ? 'Completing...'
                   : 'Completed'}
               </button>
+=======
+              {!isManagedView && (
+                <>
+                  <Link
+                    to={`/agent-dash/${batch.importBatchId}`}
+                    className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+                  >
+                    Open Batch
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={() => handleHideBatch(batch.importBatchId)}
+                    className="rounded-xl border border-red-200 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
+                  >
+                    Hide
+                  </button>
+                </>
+              )}
+              {isManagedView && (
+                <Link
+                  to={`${managedBasePath}/batches/${batch.importBatchId}`}
+                  className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+                >
+                  Open Batch
+                </Link>
+              )}
+>>>>>>> Stashed changes
             </div>
           </article>
         ))}

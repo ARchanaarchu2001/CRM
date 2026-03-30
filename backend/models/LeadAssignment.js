@@ -1,5 +1,43 @@
 import mongoose from 'mongoose';
 
+const assignmentFieldHistorySchema = new mongoose.Schema(
+  {
+    fieldKey: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    fieldLabel: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    oldValue: {
+      type: String,
+      default: '',
+    },
+    newValue: {
+      type: String,
+      default: '',
+    },
+    changedAt: {
+      type: Date,
+      default: Date.now,
+    },
+    changedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
+    changedByRole: {
+      type: String,
+      default: '',
+      trim: true,
+    },
+  },
+  { _id: true }
+);
+
 const leadAssignmentSchema = new mongoose.Schema(
   {
     lead: {
@@ -129,6 +167,10 @@ const leadAssignmentSchema = new mongoose.Schema(
       type: [String],
       default: [],
       index: true,
+    },
+    fieldChangeHistory: {
+      type: [assignmentFieldHistorySchema],
+      default: [],
     },
   },
   {

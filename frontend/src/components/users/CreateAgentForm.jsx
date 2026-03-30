@@ -13,8 +13,6 @@ const CreateAgentForm = () => {
     fullName: '',
     email: '',
     password: '',
-    phoneNumber: '',
-    employeeId: '',
   });
 
   const [profilePhoto, setProfilePhoto] = useState(null);
@@ -27,8 +25,6 @@ const CreateAgentForm = () => {
         fullName: '',
         email: '',
         password: '',
-        phoneNumber: '',
-        employeeId: '',
       });
       setProfilePhoto(null);
       setPhotoPreview(null);
@@ -74,9 +70,6 @@ const CreateAgentForm = () => {
     submitData.append('password', formData.password);
     submitData.append('role', 'agent');
 
-    if (formData.phoneNumber) submitData.append('phoneNumber', formData.phoneNumber);
-    if (formData.employeeId) submitData.append('employeeId', formData.employeeId);
-    
     submitData.append('profilePhoto', profilePhoto);
 
     dispatch(createAgentByTeamLead(submitData));
@@ -176,30 +169,6 @@ const CreateAgentForm = () => {
               disabled
               value="Agent (Managed by You)"
               className="rounded-lg border border-slate-200 p-2.5 text-sm bg-slate-50 text-slate-500 cursor-not-allowed"
-            />
-          </div>
-
-          <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium text-slate-700">Phone Number (Optional)</label>
-            <input
-              type="tel"
-              name="phoneNumber"
-              value={formData.phoneNumber}
-              onChange={handleInputChange}
-              className="rounded-lg border border-slate-300 p-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-              placeholder="+1 234 567 8900"
-            />
-          </div>
-
-          <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium text-slate-700">Employee ID (Optional)</label>
-            <input
-              type="text"
-              name="employeeId"
-              value={formData.employeeId}
-              onChange={handleInputChange}
-              className="rounded-lg border border-slate-300 p-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-              placeholder="AGT-001"
             />
           </div>
 

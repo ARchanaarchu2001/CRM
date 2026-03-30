@@ -23,7 +23,18 @@ const MainLayout = () => {
     { to: '/manager-dash', label: 'Manager', show: ['manager', 'super_admin'].includes(role) },
     { to: '/team-lead-dash', label: 'Team Lead', show: ['team_lead', 'manager', 'super_admin'].includes(role) },
     { to: '/team-lead-settings', label: 'Settings', show: ['team_lead'].includes(role) },
+    { to: '/admin-conversion', label: 'Product Conversion', show: ['super_admin'].includes(role) },
+    { to: '/analyst-dash', label: 'Analyst Workspace', show: ['data_analyst'].includes(role) },
+    { to: '/analyst-overview', label: 'Analyst Overview', show: ['data_analyst'].includes(role) },
+    { to: '/analyst-agent-performance', label: 'Agent Performance', show: ['data_analyst'].includes(role) },
+    { to: '/lead-settings', label: 'Lead Settings', show: ['data_analyst'].includes(role) },
+    { to: '/agent-dash', label: 'Agent Board', show: ['agent'].includes(role) },
+    { to: '/agent-pipeline', label: 'Pipeline', show: ['agent'].includes(role) },
+    { to: '/manager-dash', label: 'Manager', show: ['manager'].includes(role) },
+    { to: '/team-lead-dash', label: 'Team Lead', show: ['team_lead', 'manager'].includes(role) },
     { to: '/team-lead-conversion', label: 'Data Conversion', show: ['team_lead'].includes(role) },
+    { to: '/team-lead-settings', label: 'Settings', show: ['team_lead'].includes(role) },
+    { to: '/admin-settings', label: 'Settings', show: ['super_admin'].includes(role) },
   ];
 
   return (
@@ -36,18 +47,18 @@ const MainLayout = () => {
               <p className="text-sm text-slate-500">Upload, assign, and track cold-calling lead activity.</p>
             </div>
             <div className="flex items-center space-x-4">
-            {user && (
+              {user && (
                 <span className="text-sm text-slate-600">
-                Logged in as <strong>{user.email}</strong> ({role})
-              </span>
-            )}
-            <button
-              onClick={handleLogout}
+                  Logged in as <strong>{user.email}</strong> ({role})
+                </span>
+              )}
+              <button
+                onClick={handleLogout}
                 className="rounded-xl bg-red-600 px-4 py-2 text-sm text-white hover:bg-red-700 transition"
-            >
-              Logout
-            </button>
-          </div>
+              >
+                Logout
+              </button>
+            </div>
           </div>
 
           <nav className="flex flex-wrap gap-2">
@@ -65,7 +76,7 @@ const MainLayout = () => {
           </nav>
         </div>
       </header>
-      
+
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8">
         <div className="min-h-full">
           <Outlet />

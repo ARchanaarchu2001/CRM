@@ -9,7 +9,7 @@ import User from '../models/User.js';
 import { ROLES } from '../constants/roles.js';
 import { checkLeadWorkedActivity, checkIsLeadCleared, getCurrentDateString, calculateSingleAgentMetrics } from '../utils/leadMetrics.js';
 import { getIO } from '../utils/socket.js';
-import { resolveDateRange } from '../utils/dashboardAnalytics.js';
+import { buildDashboardAnalytics, resolveDateRange } from '../utils/dashboardAnalytics.js';
 
 const DEFAULT_PRODUCTS = ['mnp', 'p2p', 'fne', 'plus', 'general'];
 const DEFAULT_REMARKS = {
@@ -141,6 +141,54 @@ const buildDuplicateStatus = ({ seenInFile, existsInSystem }) => {
 };
 
 const getTodayDateString = () => new Date().toISOString().slice(0, 10);
+
+const ANALYTICS_TEAM_POPULATE = [
+  { path: 'teamLead', select: 'fullName assignedTeam' },
+  { path: 'team', select: 'name lead', populate: { path: 'lead', select: 'fullName assignedTeam' } },
+];
+
+const TRACKED_ASSIGNMENT_FIELDS = [
+  ['contactabilityStatus', 'Contactability Status'],
+  ['callAttempt1Date', 'Call Attempt 1 - Date'],
+  ['callAttempt2Date', 'Call Attempt 2 - Date'],
+  ['callingRemark', 'Calling Remarks'],
+  ['interestedRemark', 'Interested Remarks'],
+  ['notInterestedRemark', 'Not Interested Remarks'],
+  ['agentNotes', 'Agent Notes'],
+  ['status', 'Status'],
+];
+
+const buildPipelineHistoryValue = ({ inPipeline, pipelineFollowUpDate }) => {
+  if (!inPipeline && !pipelineFollowUpDate) {
+    return '';
+  }
+
+  if (!inPipeline) {
+    return `Pipeline date removed (${pipelineFollowUpDate || 'no follow-up date'})`;
+  }
+
+  return pipelineFollowUpDate ? `In Pipeline - Follow-up ${pipelineFollowUpDate}` : 'In Pipeline';
+};
+
+const getViewableAgentForLead = async (requester, agentId) => {
+  const agent = await User.findOne({ _id: agentId, role: ROLES.AGENT, isDeleted: false })
+    .select('fullName teamLead')
+    .lean();
+
+  if (!agent) {
+    return null;
+  }
+
+  if ([ROLES.SUPER_ADMIN, ROLES.DATA_ANALYST].includes(requester.role)) {
+    return agent;
+  }
+
+  if (requester.role === ROLES.TEAM_LEAD && String(agent.teamLead || '') === String(requester._id)) {
+    return agent;
+  }
+
+  return null;
+};
 
 const ensureDefaultRemarkConfigs = async () => {
   for (const product of DEFAULT_PRODUCTS) {
@@ -1049,6 +1097,54 @@ export const updateAssignmentOutcome = asyncHandler(async (req, res) => {
   const isWorked = checkLeadWorkedActivity(assignment, updates);
   const nextStatus = status ?? assignment.status;
   const previousStatus = assignment.status;
+  const historyEntries = [];
+
+  for (const [fieldKey, fieldLabel] of TRACKED_ASSIGNMENT_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(req.body, fieldKey)) {
+      continue;
+    }
+
+    const previousValue = String(assignment[fieldKey] ?? '');
+    const nextValue = String(req.body[fieldKey] ?? '');
+
+    if (previousValue !== nextValue) {
+      historyEntries.push({
+        fieldKey,
+        fieldLabel,
+        oldValue: previousValue,
+        newValue: nextValue,
+        changedAt: new Date(),
+        changedBy: req.user._id,
+        changedByRole: req.user.role,
+      });
+    }
+  }
+
+  if (
+    Object.prototype.hasOwnProperty.call(req.body, 'inPipeline') ||
+    Object.prototype.hasOwnProperty.call(req.body, 'pipelineFollowUpDate')
+  ) {
+    const previousPipelineValue = buildPipelineHistoryValue({
+      inPipeline: assignment.inPipeline,
+      pipelineFollowUpDate: assignment.pipelineFollowUpDate,
+    });
+    const nextPipelineValue = buildPipelineHistoryValue({
+      inPipeline: inPipeline ?? assignment.inPipeline,
+      pipelineFollowUpDate: pipelineFollowUpDate ?? assignment.pipelineFollowUpDate,
+    });
+
+    if (previousPipelineValue !== nextPipelineValue) {
+      historyEntries.push({
+        fieldKey: 'pipeline',
+        fieldLabel: 'Pipeline',
+        oldValue: previousPipelineValue,
+        newValue: nextPipelineValue,
+        changedAt: new Date(),
+        changedBy: req.user._id,
+        changedByRole: req.user.role,
+      });
+    }
+  }
 
   assignment.status = nextStatus || assignment.status;
   assignment.contactabilityStatus = contactabilityStatus ?? assignment.contactabilityStatus;
@@ -1087,7 +1183,22 @@ export const updateAssignmentOutcome = asyncHandler(async (req, res) => {
     }
   }
 
+  if (historyEntries.length) {
+    assignment.fieldChangeHistory = [...(assignment.fieldChangeHistory || []), ...historyEntries];
+  }
+
   await assignment.save();
+
+  try {
+    getIO().emit('assignmentUpdated', {
+      assignmentId: assignment._id.toString(),
+      agentId: assignment.agent.toString(),
+      batchId: assignment.importBatch?.toString() || '',
+      updatedAt: assignment.updatedAt,
+    });
+  } catch (error) {
+    console.error('Failed to emit assignmentUpdated', error);
+  }
 
   try {
     const updatedMetrics = await calculateSingleAgentMetrics(assignment.agent);
@@ -1238,6 +1349,449 @@ export const getTeamLeadConversionOverview = asyncHandler(async (req, res) => {
       filter: rangeInfo,
       products: productsOverview,
       agents: agentsOverview,
+    },
+  });
+});
+
+export const getAnalystPerformanceOverview = asyncHandler(async (req, res) => {
+  if (![ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN].includes(req.user.role)) {
+    res.status(403);
+    throw new Error('Forbidden');
+  }
+
+  let rangeInfo;
+  try {
+    rangeInfo = resolveDateRange(req.query);
+  } catch (error) {
+    res.status(400);
+    throw error;
+  }
+
+  const agents = await User.find({ role: ROLES.AGENT, isDeleted: false })
+    .select('fullName email profilePhoto assignedTeam team teamLead isActive')
+    .populate(ANALYTICS_TEAM_POPULATE)
+    .sort({ fullName: 1 })
+    .lean();
+
+  const agentIds = agents.map((agent) => agent._id);
+
+  if (!agentIds.length) {
+    return res.status(200).json({
+      success: true,
+      dashboard: {
+        filter: rangeInfo,
+        kpis: [],
+        kpiTitles: {},
+        summary: {},
+        agentTable: [],
+        charts: {
+          agentDials: [],
+          agentSubmissions: [],
+          teamComparison: [],
+        },
+        products: [],
+        agentConversions: [],
+      },
+    });
+  }
+
+  const assignments = await LeadAssignment.find({ agent: { $in: agentIds } })
+    .select('agent product status createdAt submittedAt activatedAt workedDates inPipeline pipelineFollowUpDate updatedAt')
+    .lean();
+
+  const analytics = buildDashboardAnalytics({
+    agents,
+    assignments,
+    rangeInfo,
+    includeTeamComparison: true,
+  });
+
+  const isInRange = (dateValue) => {
+    if (!dateValue) return false;
+    const parsed = new Date(dateValue);
+    return !Number.isNaN(parsed.getTime()) && parsed >= rangeInfo.fromDate && parsed <= rangeInfo.toDate;
+  };
+
+  const agentConversionMap = new Map(
+    analytics.agentTable.map((agent) => [
+      agent.agentId,
+      {
+        agentId: agent.agentId,
+        agentName: agent.agentName,
+        teamId: agent.teamId || '',
+        teamName: agent.teamName || 'Unassigned Team',
+        totalAssignedLeads: 0,
+        totalSubmissions: 0,
+        products: Object.fromEntries(
+          DEFAULT_PRODUCTS.map((product) => [
+            product,
+            {
+              product,
+              label: product.toUpperCase(),
+              totalLeads: 0,
+              submissions: 0,
+            },
+          ])
+        ),
+      },
+    ])
+  );
+
+  for (const assignment of assignments) {
+    const agentId = String(assignment.agent);
+    const row = agentConversionMap.get(agentId);
+    if (!row) {
+      continue;
+    }
+
+    const productKey = DEFAULT_PRODUCTS.includes(String(assignment.product || '').toLowerCase())
+      ? String(assignment.product || '').toLowerCase()
+      : 'general';
+
+    if (isInRange(assignment.createdAt)) {
+      row.totalAssignedLeads += 1;
+      row.products[productKey].totalLeads += 1;
+    }
+
+    const isSubmittedInRange =
+      String(assignment.status || '').toLowerCase() === 'submitted' &&
+      isInRange(assignment.submittedAt || assignment.createdAt);
+
+    if (isSubmittedInRange) {
+      row.totalSubmissions += 1;
+      row.products[productKey].submissions += 1;
+    }
+  }
+
+  const agentConversions = Array.from(agentConversionMap.values()).map((row) => ({
+    ...row,
+    products: DEFAULT_PRODUCTS.map((product) => row.products[product]),
+  }));
+
+  const products = DEFAULT_PRODUCTS.map((product) => ({
+    product,
+    label: product.toUpperCase(),
+    totalLeads: agentConversions.reduce((sum, row) => sum + (row.products.find((item) => item.product === product)?.totalLeads || 0), 0),
+    submissions: agentConversions.reduce((sum, row) => sum + (row.products.find((item) => item.product === product)?.submissions || 0), 0),
+  }));
+
+  res.status(200).json({
+    success: true,
+    dashboard: {
+      ...analytics,
+      products,
+      agentConversions,
+    },
+  });
+});
+
+export const getManagedAgentDashboardView = asyncHandler(async (req, res) => {
+  if (![ROLES.TEAM_LEAD, ROLES.SUPER_ADMIN, ROLES.DATA_ANALYST].includes(req.user.role)) {
+    res.status(403);
+    throw new Error('Forbidden');
+  }
+
+  const agent = await getViewableAgentForLead(req.user, req.params.agentId);
+  if (!agent) {
+    res.status(404);
+    throw new Error('Agent not found');
+  }
+
+  const [batches, assignments, summary] = await Promise.all([
+    LeadAssignment.aggregate([
+      {
+        $match: {
+          agent: agent._id,
+        },
+      },
+      {
+        $group: {
+          _id: '$importBatch',
+          importBatchId: { $first: '$importBatch' },
+          batchName: { $first: '$batchName' },
+          product: { $first: '$product' },
+          totalRows: { $sum: 1 },
+          pipelineCount: { $sum: { $cond: [{ $eq: ['$inPipeline', true] }, 1, 0] } },
+          notDialedCount: {
+            $sum: {
+              $cond: [
+                {
+                  $and: [
+                    { $eq: [{ $ifNull: ['$contactabilityStatus', ''] }, ''] },
+                    { $eq: [{ $ifNull: ['$callingRemark', ''] }, ''] },
+                    { $eq: [{ $ifNull: ['$interestedRemark', ''] }, ''] },
+                    { $eq: [{ $ifNull: ['$notInterestedRemark', ''] }, ''] },
+                    { $eq: [{ $ifNull: ['$callAttempt1Date', ''] }, ''] },
+                    { $eq: [{ $ifNull: ['$callAttempt2Date', ''] }, ''] },
+                  ],
+                },
+                1,
+                0,
+              ],
+            },
+          },
+          dialedCount: {
+            $sum: {
+              $cond: [
+                {
+                  $or: [
+                    { $ne: [{ $ifNull: ['$contactabilityStatus', ''] }, ''] },
+                    { $ne: [{ $ifNull: ['$callingRemark', ''] }, ''] },
+                    { $ne: [{ $ifNull: ['$interestedRemark', ''] }, ''] },
+                    { $ne: [{ $ifNull: ['$notInterestedRemark', ''] }, ''] },
+                    { $ne: [{ $ifNull: ['$callAttempt1Date', ''] }, ''] },
+                    { $ne: [{ $ifNull: ['$callAttempt2Date', ''] }, ''] },
+                  ],
+                },
+                1,
+                0,
+              ],
+            },
+          },
+          followUpCount: { $sum: { $cond: [{ $eq: ['$callingRemark', 'Follow up'] }, 1, 0] } },
+          callbackCount: { $sum: { $cond: [{ $eq: ['$callingRemark', 'Call back'] }, 1, 0] } },
+          interestedCount: {
+            $sum: {
+              $cond: [
+                {
+                  $or: [
+                    { $eq: ['$callingRemark', 'Interested'] },
+                    { $ne: [{ $ifNull: ['$interestedRemark', ''] }, ''] },
+                  ],
+                },
+                1,
+                0,
+              ],
+            },
+          },
+          submittedCount: { $sum: { $cond: [{ $eq: ['$status', 'submitted'] }, 1, 0] } },
+          activatedCount: { $sum: { $cond: [{ $eq: ['$status', 'activated'] }, 1, 0] } },
+          updatedAt: { $max: '$updatedAt' },
+        },
+      },
+      { $sort: { updatedAt: -1 } },
+    ]),
+    LeadAssignment.find({
+      agent: agent._id,
+    }).select('contactabilityStatus callingRemark interestedRemark notInterestedRemark callAttempt1Date callAttempt2Date').lean(),
+    LeadAssignment.aggregate([
+      {
+        $match: {
+          agent: agent._id,
+          inPipeline: true,
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          totalPipelineRows: { $sum: 1 },
+          dueTodayCount: {
+            $sum: {
+              $cond: [{ $eq: ['$pipelineFollowUpDate', getTodayDateString()] }, 1, 0],
+            },
+          },
+          overdueCount: {
+            $sum: {
+              $cond: [
+                {
+                  $and: [
+                    { $ne: ['$pipelineFollowUpDate', ''] },
+                    { $lt: ['$pipelineFollowUpDate', getTodayDateString()] },
+                  ],
+                },
+                1,
+                0,
+              ],
+            },
+          },
+        },
+      },
+    ]),
+  ]);
+
+  const isNotDialed = (assignment) =>
+    !assignment.contactabilityStatus &&
+    !assignment.callingRemark &&
+    !assignment.interestedRemark &&
+    !assignment.notInterestedRemark &&
+    !assignment.callAttempt1Date &&
+    !assignment.callAttempt2Date;
+
+  res.status(200).json({
+    success: true,
+    view: {
+      agent: {
+        _id: agent._id,
+        fullName: agent.fullName,
+      },
+      batches,
+      queueSummary: {
+        pending: assignments.filter(isNotDialed).length,
+        followUp: assignments.filter((assignment) => assignment.callingRemark === 'Follow up').length,
+        callback: assignments.filter((assignment) => assignment.callingRemark === 'Call back').length,
+        interested: assignments.filter(
+          (assignment) => assignment.callingRemark === 'Interested' || Boolean(assignment.interestedRemark)
+        ).length,
+      },
+      pipelineSummary: {
+        totalPipelineRows: summary?.[0]?.totalPipelineRows || 0,
+        dueTodayCount: summary?.[0]?.dueTodayCount || 0,
+        overdueCount: summary?.[0]?.overdueCount || 0,
+      },
+    },
+  });
+});
+
+export const getManagedAgentPipelineView = asyncHandler(async (req, res) => {
+  if (![ROLES.TEAM_LEAD, ROLES.SUPER_ADMIN, ROLES.DATA_ANALYST].includes(req.user.role)) {
+    res.status(403);
+    throw new Error('Forbidden');
+  }
+
+  const agent = await getViewableAgentForLead(req.user, req.params.agentId);
+  if (!agent) {
+    res.status(404);
+    throw new Error('Agent not found');
+  }
+
+  const today = getTodayDateString();
+  const assignments = await LeadAssignment.find({
+    agent: agent._id,
+    inPipeline: true,
+  })
+    .sort({ pipelineFollowUpDate: 1, updatedAt: -1 })
+    .populate('lead')
+    .lean();
+
+  res.status(200).json({
+    success: true,
+    view: {
+      agent: {
+        _id: agent._id,
+        fullName: agent.fullName,
+      },
+      dueTodayCount: assignments.filter((assignment) => assignment.pipelineFollowUpDate === today).length,
+      overdueCount: assignments.filter(
+        (assignment) => assignment.pipelineFollowUpDate && assignment.pipelineFollowUpDate < today
+      ).length,
+      assignments: assignments.map((assignment) => ({
+        ...assignment,
+        isDueToday: assignment.pipelineFollowUpDate === today,
+        isOverdue: Boolean(assignment.pipelineFollowUpDate && assignment.pipelineFollowUpDate < today),
+      })),
+    },
+  });
+});
+
+export const getManagedAgentBatchView = asyncHandler(async (req, res) => {
+  if (![ROLES.TEAM_LEAD, ROLES.SUPER_ADMIN, ROLES.DATA_ANALYST].includes(req.user.role)) {
+    res.status(403);
+    throw new Error('Forbidden');
+  }
+
+  const agent = await getViewableAgentForLead(req.user, req.params.agentId);
+  if (!agent) {
+    res.status(404);
+    throw new Error('Agent not found');
+  }
+
+  const assignments = await LeadAssignment.find({
+    agent: agent._id,
+    importBatch: req.params.batchId,
+  })
+    .sort({ createdAt: -1 })
+    .populate('lead')
+    .lean();
+
+  const remarkConfigMap = Object.fromEntries(
+    (await ProductRemarkConfig.find()).map((config) => [config.product, config])
+  );
+
+  const [batch] = await LeadAssignment.aggregate([
+    {
+      $match: {
+        agent: agent._id,
+        importBatch: req.params.batchId,
+      },
+    },
+    {
+      $group: {
+        _id: '$importBatch',
+        importBatchId: { $first: '$importBatch' },
+        batchName: { $first: '$batchName' },
+        product: { $first: '$product' },
+        totalRows: { $sum: 1 },
+        pipelineCount: { $sum: { $cond: [{ $eq: ['$inPipeline', true] }, 1, 0] } },
+        notDialedCount: {
+          $sum: {
+            $cond: [
+              {
+                $and: [
+                  { $eq: [{ $ifNull: ['$contactabilityStatus', ''] }, ''] },
+                  { $eq: [{ $ifNull: ['$callingRemark', ''] }, ''] },
+                  { $eq: [{ $ifNull: ['$interestedRemark', ''] }, ''] },
+                  { $eq: [{ $ifNull: ['$notInterestedRemark', ''] }, ''] },
+                  { $eq: [{ $ifNull: ['$callAttempt1Date', ''] }, ''] },
+                  { $eq: [{ $ifNull: ['$callAttempt2Date', ''] }, ''] },
+                ],
+              },
+              1,
+              0,
+            ],
+          },
+        },
+        dialedCount: {
+          $sum: {
+            $cond: [
+              {
+                $or: [
+                  { $ne: [{ $ifNull: ['$contactabilityStatus', ''] }, ''] },
+                  { $ne: [{ $ifNull: ['$callingRemark', ''] }, ''] },
+                  { $ne: [{ $ifNull: ['$interestedRemark', ''] }, ''] },
+                  { $ne: [{ $ifNull: ['$notInterestedRemark', ''] }, ''] },
+                  { $ne: [{ $ifNull: ['$callAttempt1Date', ''] }, ''] },
+                  { $ne: [{ $ifNull: ['$callAttempt2Date', ''] }, ''] },
+                ],
+              },
+              1,
+              0,
+            ],
+          },
+        },
+        followUpCount: { $sum: { $cond: [{ $eq: ['$callingRemark', 'Follow up'] }, 1, 0] } },
+        callbackCount: { $sum: { $cond: [{ $eq: ['$callingRemark', 'Call back'] }, 1, 0] } },
+        interestedCount: {
+          $sum: {
+            $cond: [
+              {
+                $or: [
+                  { $eq: ['$callingRemark', 'Interested'] },
+                  { $ne: [{ $ifNull: ['$interestedRemark', ''] }, ''] },
+                ],
+              },
+              1,
+              0,
+            ],
+          },
+        },
+        submittedCount: { $sum: { $cond: [{ $eq: ['$status', 'submitted'] }, 1, 0] } },
+        activatedCount: { $sum: { $cond: [{ $eq: ['$status', 'activated'] }, 1, 0] } },
+      },
+    },
+  ]);
+
+  res.status(200).json({
+    success: true,
+    view: {
+      agent: {
+        _id: agent._id,
+        fullName: agent.fullName,
+      },
+      batch: batch || null,
+      assignments: assignments.map((assignment) => ({
+        ...assignment,
+        remarkConfig: remarkConfigMap[assignment.product] || null,
+      })),
     },
   });
 });

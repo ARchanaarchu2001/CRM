@@ -3,6 +3,10 @@ import {
   assignLeadsToAgent,
   deleteAnalystBatch,
   getAnalystBatches,
+  getAnalystPerformanceOverview,
+  getManagedAgentBatchView,
+  getManagedAgentDashboardView,
+  getManagedAgentPipelineView,
   getMyAssignmentBatches,
   getMyPipelineAssignments,
   getMyPipelineSummary,
@@ -27,7 +31,23 @@ router.use(protect);
 
 router.get('/metadata', authorizeRoles(ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN), getLeadMetadata);
 router.get('/analyst/batches', authorizeRoles(ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN), getAnalystBatches);
+router.get('/analyst/overview', authorizeRoles(ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN), getAnalystPerformanceOverview);
 router.get('/analyst', authorizeRoles(ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN), getAnalystLeads);
+router.get(
+  '/team-view/agents/:agentId/dashboard',
+  authorizeRoles(ROLES.TEAM_LEAD, ROLES.SUPER_ADMIN, ROLES.DATA_ANALYST),
+  getManagedAgentDashboardView
+);
+router.get(
+  '/team-view/agents/:agentId/pipeline',
+  authorizeRoles(ROLES.TEAM_LEAD, ROLES.SUPER_ADMIN, ROLES.DATA_ANALYST),
+  getManagedAgentPipelineView
+);
+router.get(
+  '/team-view/agents/:agentId/batches/:batchId',
+  authorizeRoles(ROLES.TEAM_LEAD, ROLES.SUPER_ADMIN, ROLES.DATA_ANALYST),
+  getManagedAgentBatchView
+);
 router.get(
   '/team-lead/conversion',
   authorizeRoles(ROLES.TEAM_LEAD, ROLES.SUPER_ADMIN),

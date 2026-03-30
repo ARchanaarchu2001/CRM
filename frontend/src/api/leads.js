@@ -65,6 +65,11 @@ export const fetchAnalystBatches = async (params) => {
   return response.data;
 };
 
+export const fetchAnalystPerformanceOverview = async (params) => {
+  const response = await axiosPrivate.get('/leads/analyst/overview', { params });
+  return response.data;
+};
+
 // Delete analyst batch ✅ FIXED
 export const deleteAnalystBatch = async (importBatchId) => {
   const response = await axiosPrivate.delete(`/leads/analyst/batches/${importBatchId}`);
@@ -73,6 +78,21 @@ export const deleteAnalystBatch = async (importBatchId) => {
 
 export const fetchTeamLeadConversionOverview = async (params) => {
   const response = await axiosPrivate.get('/leads/team-lead/conversion', { params });
+  return response.data;
+};
+
+export const fetchManagedAgentDashboardView = async (agentId) => {
+  const response = await axiosPrivate.get(`/leads/team-view/agents/${agentId}/dashboard`);
+  return response.data;
+};
+
+export const fetchManagedAgentPipelineView = async (agentId) => {
+  const response = await axiosPrivate.get(`/leads/team-view/agents/${agentId}/pipeline`);
+  return response.data;
+};
+
+export const fetchManagedAgentBatchView = async (agentId, batchId) => {
+  const response = await axiosPrivate.get(`/leads/team-view/agents/${agentId}/batches/${batchId}`);
   return response.data;
 };
 

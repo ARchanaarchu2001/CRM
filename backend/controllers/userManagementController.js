@@ -20,6 +20,7 @@ const TEAM_POPULATE = [
   { path: 'teamLead', select: 'fullName assignedTeam' },
   { path: 'team', select: 'name lead', populate: { path: 'lead', select: 'fullName assignedTeam' } },
 ];
+const DEFAULT_PRODUCTS = ['mnp', 'p2p', 'fne', 'plus', 'general'];
 
 const getCurrentTeamName = (user) => {
   if (!user) return '';
@@ -330,6 +331,88 @@ const getResolvedRangeInfo = (query, res) => {
   }
 };
 
+const buildProductConversionOverview = ({ analytics, assignments, rangeInfo }) => {
+  const isInRange = (dateValue) => {
+    if (!dateValue) return false;
+    const parsed = new Date(dateValue);
+    return !Number.isNaN(parsed.getTime()) && parsed >= rangeInfo.fromDate && parsed <= rangeInfo.toDate;
+  };
+
+  const agentConversionMap = new Map(
+    (analytics.agentTable || []).map((agent) => [
+      agent.agentId,
+      {
+        agentId: agent.agentId,
+        agentName: agent.agentName,
+        teamId: agent.teamId || '',
+        teamName: agent.teamName || 'Unassigned Team',
+        totalAssignedLeads: 0,
+        totalSubmissions: 0,
+        products: Object.fromEntries(
+          DEFAULT_PRODUCTS.map((product) => [
+            product,
+            {
+              product,
+              label: product.toUpperCase(),
+              totalLeads: 0,
+              submissions: 0,
+            },
+          ])
+        ),
+      },
+    ])
+  );
+
+  for (const assignment of assignments || []) {
+    const agentId = String(assignment.agent);
+    const row = agentConversionMap.get(agentId);
+    if (!row) {
+      continue;
+    }
+
+    const productKey = DEFAULT_PRODUCTS.includes(String(assignment.product || '').toLowerCase())
+      ? String(assignment.product || '').toLowerCase()
+      : 'general';
+
+    if (isInRange(assignment.createdAt)) {
+      row.totalAssignedLeads += 1;
+      row.products[productKey].totalLeads += 1;
+    }
+
+    const isSubmittedInRange =
+      String(assignment.status || '').toLowerCase() === 'submitted' &&
+      isInRange(assignment.submittedAt || assignment.createdAt);
+
+    if (isSubmittedInRange) {
+      row.totalSubmissions += 1;
+      row.products[productKey].submissions += 1;
+    }
+  }
+
+  const agentConversions = Array.from(agentConversionMap.values()).map((row) => ({
+    ...row,
+    products: DEFAULT_PRODUCTS.map((product) => row.products[product]),
+  }));
+
+  const products = DEFAULT_PRODUCTS.map((product) => ({
+    product,
+    label: product.toUpperCase(),
+    totalLeads: agentConversions.reduce(
+      (sum, row) => sum + (row.products.find((item) => item.product === product)?.totalLeads || 0),
+      0
+    ),
+    submissions: agentConversions.reduce(
+      (sum, row) => sum + (row.products.find((item) => item.product === product)?.submissions || 0),
+      0
+    ),
+  }));
+
+  return {
+    products,
+    agentConversions,
+  };
+};
+
 /**
  * Helper to fetch and attach metrics for a list of agents
  */
@@ -389,7 +472,10 @@ export const getAllUsersForAdmin = asyncHandler(async (req, res) => {
     return res.status(403).json({ success: false, message: 'Forbidden' });
   }
   
-  const users = await User.find({ isDeleted: false }).select('-password -refreshToken').sort({ createdAt: -1 });
+  const users = await User.find({ isDeleted: false })
+    .select('-password -refreshToken')
+    .populate(TEAM_POPULATE)
+    .sort({ createdAt: -1 });
   
   const enrichedUsers = await attachMetricsToAgents(users);
 
@@ -465,16 +551,24 @@ export const getSuperAdminDashboard = asyncHandler(async (req, res) => {
     rangeInfo,
     includeTeamComparison: true,
   });
+  const conversionOverview = buildProductConversionOverview({
+    analytics,
+    assignments,
+    rangeInfo,
+  });
 
   res.status(200).json({
     success: true,
     scope: 'super_admin',
-    dashboard: analytics,
+    dashboard: {
+      ...analytics,
+      ...conversionOverview,
+    },
   });
 });
 
 export const getAgentPerformanceDetail = asyncHandler(async (req, res) => {
-  if (![ROLES.TEAM_LEAD, ROLES.SUPER_ADMIN].includes(req.user.role)) {
+  if (![ROLES.TEAM_LEAD, ROLES.SUPER_ADMIN, ROLES.DATA_ANALYST].includes(req.user.role)) {
     return res.status(403).json({ success: false, message: 'Forbidden' });
   }
 
@@ -559,6 +653,63 @@ export const removeAgentFromTeam = asyncHandler(async (req, res) => {
   res.status(200).json({
     success: true,
     message: 'Agent removed from the team successfully',
+  });
+});
+
+export const removeUserFromSystem = asyncHandler(async (req, res) => {
+  const targetUser = await User.findById(req.params.id);
+
+  if (!targetUser || targetUser.isDeleted) {
+    return res.status(404).json({ success: false, message: 'User not found' });
+  }
+
+  if (!canModifyOrDeleteUser(req.user, targetUser)) {
+    return res.status(403).json({ success: false, message: 'Forbidden: You do not have permission to remove this user' });
+  }
+
+  if (targetUser.role === ROLES.SUPER_ADMIN) {
+    return res.status(403).json({ success: false, message: 'Super Admin accounts cannot be removed from this workspace' });
+  }
+
+  if (targetUser.role === ROLES.TEAM_LEAD) {
+    const linkedTeam = await Team.findOne({ lead: targetUser._id });
+
+    if (linkedTeam) {
+      await User.updateMany(
+        { role: ROLES.AGENT, teamLead: targetUser._id, isDeleted: false },
+        {
+          $set: {
+            team: null,
+            teamLead: null,
+            assignedTeam: null,
+            updatedBy: req.user._id,
+          },
+        }
+      );
+
+      await Team.deleteOne({ _id: linkedTeam._id });
+    }
+  }
+
+  if (targetUser.role === ROLES.AGENT) {
+    targetUser.team = null;
+    targetUser.teamLead = null;
+    targetUser.assignedTeam = null;
+  }
+
+  targetUser.isActive = false;
+  targetUser.isBlocked = true;
+  targetUser.isDeleted = true;
+  targetUser.deletedAt = new Date();
+  targetUser.deletedBy = req.user._id;
+  targetUser.updatedBy = req.user._id;
+  targetUser.refreshToken = null;
+
+  await targetUser.save({ validateBeforeSave: false });
+
+  res.status(200).json({
+    success: true,
+    message: `${targetUser.fullName} was removed from the system successfully`,
   });
 });
 

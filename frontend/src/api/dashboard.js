@@ -46,3 +46,18 @@ export const moveDashboardUserToTeam = async (userId, teamId) => {
   const response = await axiosPrivate.patch(`/users/${userId}/move-team`, { teamId });
   return response.data;
 };
+
+export const fetchAdminUsers = async () => {
+  const response = await axiosPrivate.get('/users');
+  return response.data;
+};
+
+export const updateDashboardUser = async (userId, payload) => {
+  const response = await axiosPrivate.put(`/users/${userId}`, payload);
+  return response.data;
+};
+
+export const removeDashboardUser = async (userId) => {
+  const response = await axiosPrivate.delete(`/users/${userId}`);
+  return response.data;
+};

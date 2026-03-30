@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { updateAssignment, fetchMyPipelineAssignments } from '../api/leads.js';
+import { updateAssignment, fetchManagedAgentPipelineView, fetchMyPipelineAssignments } from '../api/leads.js';
 import { formatContactDisplay } from '../utils/contactNumber.js';
+import { useParams } from 'react-router-dom';
 
 const AUTOSAVE_DELAY_MS = 700;
 const DEFAULT_REMARK_CONFIG = {
@@ -37,6 +38,8 @@ const buildAttemptValue = (dateValue, timeValue) => {
 const normalizeSortValue = (value) => String(value || '').toLowerCase();
 
 const AgentPipelinePage = () => {
+  const { agentId } = useParams();
+  const isManagedView = Boolean(agentId);
   const navigate = useNavigate();
   const [assignments, setAssignments] = useState([]);
   const [summary, setSummary] = useState({ dueTodayCount: 0, overdueCount: 0 });
@@ -50,6 +53,16 @@ const AgentPipelinePage = () => {
   const timersRef = useRef(new Map());
 
   const loadPipeline = async () => {
+    if (isManagedView) {
+      const data = await fetchManagedAgentPipelineView(agentId);
+      setAssignments(data.view?.assignments || []);
+      setSummary({
+        dueTodayCount: data.view?.dueTodayCount || 0,
+        overdueCount: data.view?.overdueCount || 0,
+      });
+      return;
+    }
+
     const data = await fetchMyPipelineAssignments();
     setAssignments(data.assignments || []);
     setSummary({
@@ -60,7 +73,7 @@ const AgentPipelinePage = () => {
 
   useEffect(() => {
     loadPipeline();
-  }, []);
+  }, [agentId]);
 
   useEffect(() => {
     return () => {
@@ -130,6 +143,10 @@ const AgentPipelinePage = () => {
   };
 
   const queueAutosave = (assignment) => {
+    if (isManagedView) {
+      return;
+    }
+
     const existingTimer = timersRef.current.get(assignment._id);
     if (existingTimer) {
       clearTimeout(existingTimer);
@@ -176,6 +193,10 @@ const AgentPipelinePage = () => {
   };
 
   const handleFieldChange = (assignmentId, field, value) => {
+    if (isManagedView) {
+      return;
+    }
+
     setAssignments((current) =>
       current.map((assignment) => {
         if (assignment._id !== assignmentId) {
@@ -189,6 +210,10 @@ const AgentPipelinePage = () => {
   };
 
   const handleAttemptChange = (assignment, field, part, value) => {
+    if (isManagedView) {
+      return;
+    }
+
     const currentParts = splitAttemptValue(assignment[field]);
     const nextDate = part === 'date' ? value : currentParts.date;
     const nextTime = part === 'time' ? value : currentParts.time;
@@ -213,6 +238,7 @@ const AgentPipelinePage = () => {
     }
   };
 
+<<<<<<< Updated upstream
   const removeFromPipeline = async (assignment) => {
     const existingTimer = timersRef.current.get(assignment._id);
     if (existingTimer) {
@@ -272,6 +298,15 @@ const AgentPipelinePage = () => {
         return nextState;
       });
     }
+=======
+  const removeFromPipeline = (assignment) => {
+    if (isManagedView) {
+      return;
+    }
+
+    handleFieldChange(assignment._id, 'inPipeline', false);
+    handleFieldChange(assignment._id, 'pipelineFollowUpDate', '');
+>>>>>>> Stashed changes
   };
 
   return (
@@ -281,7 +316,9 @@ const AgentPipelinePage = () => {
           <div>
             <h2 className="text-xl font-semibold text-slate-900">Pipeline</h2>
             <p className="mt-2 text-sm text-slate-600">
-              Move rows here for planned follow-up. Due-today and overdue rows act as your in-app notification list.
+              {isManagedView
+                ? 'This is the actual agent pipeline in read-only mode. Team Leads can inspect it but cannot edit any row.'
+                : 'Move rows here for planned follow-up. Due-today and overdue rows act as your in-app notification list.'}
             </p>
           </div>
           <button
@@ -431,6 +468,7 @@ const AgentPipelinePage = () => {
                         type="date"
                         value={assignment.pipelineFollowUpDate || ''}
                         onChange={(event) => handleFieldChange(assignment._id, 'pipelineFollowUpDate', event.target.value)}
+                        disabled={isManagedView}
                         className="w-[145px] rounded-lg border border-slate-300 px-2 py-1"
                       />
                     </td>
@@ -439,6 +477,7 @@ const AgentPipelinePage = () => {
                         type="text"
                         value={assignment.pipelineNotes || ''}
                         onChange={(event) => handleFieldChange(assignment._id, 'pipelineNotes', event.target.value)}
+                        disabled={isManagedView}
                         className="w-[180px] rounded-lg border border-slate-300 px-2 py-1"
                       />
                     </td>
@@ -446,6 +485,7 @@ const AgentPipelinePage = () => {
                       <select
                         value={assignment.contactabilityStatus || ''}
                         onChange={(event) => handleFieldChange(assignment._id, 'contactabilityStatus', event.target.value)}
+                        disabled={isManagedView}
                         className="w-[170px] rounded-lg border border-slate-300 px-2 py-1"
                       >
                         <option value="">Select</option>
@@ -462,12 +502,14 @@ const AgentPipelinePage = () => {
                           type="date"
                           value={splitAttemptValue(assignment.callAttempt1Date).date}
                           onChange={(event) => handleAttemptChange(assignment, 'callAttempt1Date', 'date', event.target.value)}
+                          disabled={isManagedView}
                           className="w-[135px] rounded-lg border border-slate-300 px-2 py-1"
                         />
                         <input
                           type="time"
                           value={splitAttemptValue(assignment.callAttempt1Date).time}
                           onChange={(event) => handleAttemptChange(assignment, 'callAttempt1Date', 'time', event.target.value)}
+                          disabled={isManagedView}
                           className="w-[95px] rounded-lg border border-slate-300 px-2 py-1"
                         />
                       </div>
@@ -478,12 +520,14 @@ const AgentPipelinePage = () => {
                           type="date"
                           value={splitAttemptValue(assignment.callAttempt2Date).date}
                           onChange={(event) => handleAttemptChange(assignment, 'callAttempt2Date', 'date', event.target.value)}
+                          disabled={isManagedView}
                           className="w-[135px] rounded-lg border border-slate-300 px-2 py-1"
                         />
                         <input
                           type="time"
                           value={splitAttemptValue(assignment.callAttempt2Date).time}
                           onChange={(event) => handleAttemptChange(assignment, 'callAttempt2Date', 'time', event.target.value)}
+                          disabled={isManagedView}
                           className="w-[95px] rounded-lg border border-slate-300 px-2 py-1"
                         />
                       </div>
@@ -492,6 +536,7 @@ const AgentPipelinePage = () => {
                       <select
                         value={assignment.callingRemark || ''}
                         onChange={(event) => handleFieldChange(assignment._id, 'callingRemark', event.target.value)}
+                        disabled={isManagedView}
                         className="w-[180px] rounded-lg border border-slate-300 px-2 py-1"
                       >
                         <option value="">Select</option>
@@ -506,6 +551,7 @@ const AgentPipelinePage = () => {
                       <select
                         value={assignment.interestedRemark || ''}
                         onChange={(event) => handleFieldChange(assignment._id, 'interestedRemark', event.target.value)}
+                        disabled={isManagedView}
                         className="w-[180px] rounded-lg border border-slate-300 px-2 py-1"
                       >
                         <option value="">Select</option>
@@ -520,6 +566,7 @@ const AgentPipelinePage = () => {
                       <select
                         value={assignment.notInterestedRemark || ''}
                         onChange={(event) => handleFieldChange(assignment._id, 'notInterestedRemark', event.target.value)}
+                        disabled={isManagedView}
                         className="w-[200px] rounded-lg border border-slate-300 px-2 py-1"
                       >
                         <option value="">Select</option>
@@ -535,6 +582,7 @@ const AgentPipelinePage = () => {
                         type="text"
                         value={assignment.agentNotes || ''}
                         onChange={(event) => handleFieldChange(assignment._id, 'agentNotes', event.target.value)}
+                        disabled={isManagedView}
                         className="w-[220px] rounded-lg border border-slate-300 px-2 py-1"
                       />
                     </td>
@@ -542,6 +590,7 @@ const AgentPipelinePage = () => {
                       <select
                         value={assignment.status || ''}
                         onChange={(event) => handleFieldChange(assignment._id, 'status', event.target.value)}
+                        disabled={isManagedView}
                         className="w-[140px] rounded-lg border border-slate-300 px-2 py-1"
                       >
                         <option value="">Select</option>
@@ -550,6 +599,7 @@ const AgentPipelinePage = () => {
                       </select>
                     </td>
                     <td className="px-3 py-2">
+<<<<<<< Updated upstream
                       <button
                         type="button"
                         onClick={() => removeFromPipeline(assignment)}
@@ -558,6 +608,17 @@ const AgentPipelinePage = () => {
                       >
                         {removingIds[assignment._id] ? 'Removing...' : 'Remove From Pipeline'}
                       </button>
+=======
+                      {!isManagedView && (
+                        <button
+                          type="button"
+                          onClick={() => removeFromPipeline(assignment)}
+                          className="rounded-xl border border-slate-300 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                        >
+                          Return To Batch
+                        </button>
+                      )}
+>>>>>>> Stashed changes
                     </td>
                   </tr>
                 );

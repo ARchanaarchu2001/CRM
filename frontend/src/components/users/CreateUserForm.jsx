@@ -22,8 +22,6 @@ const CreateUserForm = () => {
     email: '',
     password: '',
     role: '',
-    phoneNumber: '',
-    employeeId: '',
     teamName: '',
     teamId: '',
   });
@@ -42,8 +40,6 @@ const CreateUserForm = () => {
         email: '',
         password: '',
         role: '',
-        phoneNumber: '',
-        employeeId: '',
         teamName: '',
         teamId: '',
       });
@@ -121,8 +117,6 @@ const CreateUserForm = () => {
     submitData.append('password', formData.password);
     submitData.append('role', formData.role);
 
-    if (formData.phoneNumber) submitData.append('phoneNumber', formData.phoneNumber);
-    if (formData.employeeId) submitData.append('employeeId', formData.employeeId);
     if (formData.role === 'team_lead') submitData.append('teamName', formData.teamName.trim());
     if (formData.role === 'agent' && formData.teamId) submitData.append('teamId', formData.teamId);
     if (profilePhoto) submitData.append('profilePhoto', profilePhoto);
@@ -233,30 +227,6 @@ const CreateUserForm = () => {
                 <option key={r.value} value={r.value}>{r.label}</option>
               ))}
             </select>
-          </div>
-
-          <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium text-slate-700">Phone Number (Optional)</label>
-            <input
-              type="tel"
-              name="phoneNumber"
-              value={formData.phoneNumber}
-              onChange={handleInputChange}
-              className="rounded-lg border border-slate-300 p-2.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-              placeholder="+1 234 567 8900"
-            />
-          </div>
-
-          <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium text-slate-700">Employee ID (Optional)</label>
-            <input
-              type="text"
-              name="employeeId"
-              value={formData.employeeId}
-              onChange={handleInputChange}
-              className="rounded-lg border border-slate-300 p-2.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-              placeholder="EMP-001"
-            />
           </div>
 
           {formData.role === 'team_lead' && (

@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import DateFilterBar from '../components/dashboard/DateFilterBar.jsx';
-import ProductLeadConversionChart from '../components/dashboard/ProductLeadConversionChart.jsx';
 import { fetchTeamLeadConversionOverview } from '../api/leads.js';
 import { buildDashboardParams, getDefaultDashboardFilter, getFilterBadgeLabel } from '../utils/dashboard.js';
 
@@ -61,25 +60,33 @@ const TeamLeadConversionPage = () => {
         <div className="rounded-[2rem] border border-slate-200 bg-white p-10 text-center text-slate-500 shadow-sm">Loading conversion overview...</div>
       ) : (
         <>
-          <ProductLeadConversionChart data={overview?.products || []} />
-
           <section className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm">
             <div className="mb-4">
               <h2 className="text-lg font-semibold text-slate-900">Agent Product Conversion Table</h2>
-              <p className="mt-1 text-sm text-slate-500">Track total assigned leads and submissions by agent, broken down across products.</p>
+              <p className="mt-1 text-sm text-slate-500">
+                Understand clearly, for each agent, how many total leads were assigned from each product and how many submissions were made from those same product leads.
+              </p>
             </div>
 
             <div className="overflow-x-auto">
               <table className="min-w-[1100px] text-left text-sm text-slate-600">
                 <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-700">
                   <tr>
-                    <th className="px-4 py-3 font-semibold">Agent</th>
-                    <th className="px-4 py-3 font-semibold text-center">Total Leads</th>
-                    <th className="px-4 py-3 font-semibold text-center">Submissions</th>
+                    <th className="px-4 py-3 font-semibold" rowSpan={2}>Agent</th>
+                    <th className="px-4 py-3 font-semibold text-center" rowSpan={2}>All Leads</th>
+                    <th className="px-4 py-3 font-semibold text-center" rowSpan={2}>All Submissions</th>
                     {(overview?.products || []).map((product) => (
-                      <th key={product.product} className="px-4 py-3 font-semibold text-center">
-                        {product.label} Leads/Submissions
+                      <th key={product.product} className="px-4 py-3 font-semibold text-center" colSpan={2}>
+                        {product.label}
                       </th>
+                    ))}
+                  </tr>
+                  <tr>
+                    {(overview?.products || []).map((product) => (
+                      <React.Fragment key={`${product.product}-subheaders`}>
+                        <th className="px-4 py-3 font-semibold text-center">Leads</th>
+                        <th className="px-4 py-3 font-semibold text-center">Submissions</th>
+                      </React.Fragment>
                     ))}
                   </tr>
                 </thead>
@@ -104,12 +111,30 @@ const TeamLeadConversionPage = () => {
                       <td className="px-4 py-4 text-center font-semibold text-slate-900">{agent.totalAssignedLeads}</td>
                       <td className="px-4 py-4 text-center font-semibold text-slate-900">{agent.totalSubmissions}</td>
                       {agent.products.map((product) => (
-                        <td key={`${agent.agentId}-${product.product}`} className="px-4 py-4 text-center text-slate-700">
-                          {product.totalLeads} / {product.submissions}
-                        </td>
+                        <React.Fragment key={`${agent.agentId}-${product.product}`}>
+                          <td className="px-4 py-4 text-center text-slate-700">{product.totalLeads}</td>
+                          <td className="px-4 py-4 text-center text-slate-700">{product.submissions}</td>
+                        </React.Fragment>
                       ))}
                     </tr>
                   ))}
+                  {!!overview?.agents?.length && (
+                    <tr className="border-t-2 border-slate-200 bg-slate-50">
+                      <td className="px-4 py-4 font-semibold text-slate-900">Team Total</td>
+                      <td className="px-4 py-4 text-center font-semibold text-slate-900">
+                        {overview.agents.reduce((sum, agent) => sum + (agent.totalAssignedLeads || 0), 0)}
+                      </td>
+                      <td className="px-4 py-4 text-center font-semibold text-slate-900">
+                        {overview.agents.reduce((sum, agent) => sum + (agent.totalSubmissions || 0), 0)}
+                      </td>
+                      {(overview?.products || []).map((product) => (
+                        <React.Fragment key={`total-${product.product}`}>
+                          <td className="px-4 py-4 text-center font-semibold text-slate-900">{product.totalLeads}</td>
+                          <td className="px-4 py-4 text-center font-semibold text-slate-900">{product.submissions}</td>
+                        </React.Fragment>
+                      ))}
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
