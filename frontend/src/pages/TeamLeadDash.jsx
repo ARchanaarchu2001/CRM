@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
-import CreateAgentForm from '../components/users/CreateAgentForm';
 import DateFilterBar from '../components/dashboard/DateFilterBar.jsx';
 import KpiCardGrid from '../components/dashboard/KpiCardGrid.jsx';
 import AgentMetricBarChart from '../components/dashboard/AgentMetricBarChart.jsx';
@@ -17,7 +16,6 @@ import { buildDashboardParams, getDefaultDashboardFilter, getFilterBadgeLabel } 
 
 const TeamLeadDash = () => {
   const navigate = useNavigate();
-  const [showCreateForm, setShowCreateForm] = useState(false);
   const [filter, setFilter] = useState(getDefaultDashboardFilter);
   const [dashboard, setDashboard] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -137,31 +135,7 @@ const TeamLeadDash = () => {
   };
 
   return (
-    <div className="mx-auto max-w-7xl space-y-4 py-4 sm:space-y-6 sm:py-6">
-      <div className="flex flex-col gap-4 border-b border-slate-200 pb-4 sm:flex-row sm:items-center sm:justify-between sm:pb-5">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">Team Lead Performance Dashboard</h1>
-          <p className="mt-1 text-sm text-slate-500">
-            Compare agents by output, review team submission volume, and manage a selected agent from one focused workspace.
-          </p>
-        </div>
-
-        <button
-          onClick={() => setShowCreateForm(!showCreateForm)}
-          className={`w-full rounded-lg px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 sm:w-auto ${
-            showCreateForm ? 'bg-slate-500 hover:bg-slate-600 focus:ring-slate-500' : 'bg-indigo-600 hover:bg-indigo-700 focus:ring-indigo-500'
-          }`}
-        >
-          {showCreateForm ? 'Cancel Creation' : 'Add New Agent'}
-        </button>
-      </div>
-
-      {showCreateForm && (
-        <div className="mb-8 animate-in fade-in slide-in-from-top-4 duration-300 ease-out">
-          <CreateAgentForm />
-        </div>
-      )}
-
+    <div className="mx-auto max-w-7xl space-y-4  sm:space-y-6 ">
       <section className="rounded-[1.5rem] border border-slate-200 bg-white p-4 shadow-sm sm:rounded-[2rem] sm:p-5">
         <div className="mb-4">
           <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Dashboard Filters</p>
@@ -194,9 +168,9 @@ const TeamLeadDash = () => {
                   Showing analytics for {getFilterBadgeLabel(dashboard?.filter)} across your managed agents.
                 </p>
               </div>
-                <span className="rounded-full bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700">
+                {/* <span className="rounded-full bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700">
                   {dashboard?.onlineAgentCount || 0} agents online
-                </span>
+                </span> */}
               </div>
             </div>
 

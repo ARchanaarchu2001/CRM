@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { Link, Outlet, useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { logoutUser } from '../features/auth/authSlice.js';
@@ -10,12 +10,14 @@ const MainLayout = () => {
   const { user, role } = useSelector((state) => state.auth);
 
   useEffect(() => {
-    if (!user?._id) {
-      return;
-    }
+    if (!user?._id) return;
 
     connectSocket();
     registerSocketPresence(user);
+
+    return () => {
+      disconnectSocket();
+    };
   }, [user]);
 
   const handleLogout = async () => {
@@ -23,6 +25,83 @@ const MainLayout = () => {
     await dispatch(logoutUser());
     navigate('/login');
   };
+
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'Good Morning';
+    if (hour < 18) return 'Good Afternoon';
+    return 'Good Evening';
+  };
+
+  const welcomeContent = useMemo(() => {
+   const getDisplayName = () => {
+  switch (role) {
+    case 'super_admin':
+      return 'Admin';
+
+    case 'data_analyst':
+      return 'Analyst'; // 👈 or 'Data Analyst' if you prefer
+
+    case 'team_lead':
+      return 'Team Lead';
+
+    case 'manager':
+      return 'Manager';
+
+    case 'agent':
+      return user?.fullName?.split(' ')[0] || '';
+
+    default:
+      return user?.fullName?.split(' ')[0] || '';
+  }
+};
+
+const firstName = getDisplayName();
+
+    switch (role) {
+     case 'super_admin':
+  return {
+    title: `${getGreeting()}${firstName ? `, ${firstName}` : ''} 👋`,
+    subtitle: 'Manage teams, monitor performance, and oversee system operations.',
+    badge: 'Admin',
+  };
+
+      case 'team_lead':
+        return {
+          title: `${getGreeting()}${firstName ? `, ${firstName}` : ''} 👋`,
+          subtitle: 'Track your agents, manage leads, and drive team performance.',
+          badge: 'Team Lead',
+        };
+
+      case 'agent':
+        return {
+          title: `${getGreeting()}${firstName ? `, ${firstName}` : ''} 👋`,
+          subtitle: 'Focus on your leads, update progress, and hit your targets.',
+          badge: 'Agent',
+        };
+
+      case 'data_analyst':
+        return {
+          title: `${getGreeting()}${firstName ? `, ${firstName}` : ''} 👋`,
+          subtitle: 'Analyze lead data, track trends, and generate insights.',
+          badge: 'Data Analyst',
+        };
+
+      case 'manager':
+        return {
+          title: `${getGreeting()}${firstName ? `, ${firstName}` : ''} 👋`,
+          subtitle: 'Monitor team performance, review activity, and support delivery.',
+          badge: 'Manager',
+        };
+
+      default:
+        return {
+          title: `${getGreeting()}${firstName ? `, ${firstName}` : ''} 👋`,
+          subtitle: 'Welcome back to your workspace.',
+          badge: role || 'User',
+        };
+    }
+  }, [role, user]);
 
   const links = [
     {
@@ -35,13 +114,13 @@ const MainLayout = () => {
       label: 'Home',
       show: true,
     },
-    { to: '/admin-dash', label: 'Admin Dashboard', show: ['super_admin'].includes(role) },
+    { to: '/admin-dash', label: 'Admin Dashboard', show: false },
 
-    { to: '/analyst-dash', label: 'Analyst Workspace', show: ['super_admin'].includes(role) },
+    { to: '/analyst-dash', label: 'Analyst Workspace', show: false },
     { to: '/analyst-overview', label: 'Analyst Overview', show: ['data_analyst'].includes(role) },
     { to: '/analyst-agent-performance', label: 'Agent Performance', show: ['data_analyst'].includes(role) },
 
-    { to: '/lead-settings', label: 'Lead Settings', show: ['data_analyst', 'super_admin'].includes(role) },
+    { to: '/lead-settings', label: 'Lead Settings', show: ['data_analyst'].includes(role) },
 
     { to: '/agent-pipeline', label: 'Pipeline', show: ['agent'].includes(role) },
 
@@ -59,20 +138,26 @@ const MainLayout = () => {
     <div className="min-h-screen bg-slate-100 flex flex-col">
       <header className="border-b border-slate-200 bg-white">
         <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-4 sm:px-6 lg:px-8">
-          <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <h1 className="text-xl font-bold text-slate-900">Lead Distribution Workspace</h1>
-              <p className="text-sm text-slate-500">Upload, assign, and track cold-calling lead activity.</p>
+              <div className="flex items-center gap-3 flex-wrap">
+                <h1 className="text-2xl font-bold text-slate-900">{welcomeContent.title}</h1>
+                {/* <span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700">
+                  {welcomeContent.badge}
+                </span> */}
+              </div>
+              <p className="mt-1 text-sm text-slate-500">{welcomeContent.subtitle}</p>
             </div>
+
             <div className="flex items-center space-x-4">
               {user && (
                 <span className="text-sm text-slate-600">
-                  Logged in as <strong>{user.email}</strong> ({role})
+                  Logged in as <strong>{user.email}</strong>
                 </span>
               )}
               <button
                 onClick={handleLogout}
-                className="rounded-xl bg-red-600 px-4 py-2 text-sm text-white hover:bg-red-700 transition"
+                className="rounded-xl bg-red-600 px-4 py-2 text-sm text-white transition hover:bg-red-700"
               >
                 Logout
               </button>
@@ -95,7 +180,7 @@ const MainLayout = () => {
         </div>
       </header>
 
-      <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8">
+      <main className="mx-auto flex-1 max-w-7xl w-full p-4 sm:p-6 lg:p-8">
         <div className="min-h-full">
           <Outlet />
         </div>

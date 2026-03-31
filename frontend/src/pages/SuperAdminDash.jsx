@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
-import CreateUserForm from '../components/users/CreateUserForm.jsx';
 import DateFilterBar from '../components/dashboard/DateFilterBar.jsx';
 import KpiCardGrid from '../components/dashboard/KpiCardGrid.jsx';
 import TeamComparisonChart from '../components/dashboard/TeamComparisonChart.jsx';
@@ -15,7 +14,6 @@ import { buildDashboardParams, getDefaultDashboardFilter, getFilterBadgeLabel } 
 
 const SuperAdminDash = () => {
   const navigate = useNavigate();
-  const [showCreateForm, setShowCreateForm] = useState(false);
   const [filter, setFilter] = useState(getDefaultDashboardFilter);
   const [dashboard, setDashboard] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -189,31 +187,7 @@ const SuperAdminDash = () => {
   );
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto py-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-5">
-        <div>
-          <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Super Admin Performance Dashboard</h1>
-          <p className="mt-1 text-sm text-slate-500">
-            Compare team output, spot top dialers, and track system-wide submissions from one command view.
-          </p>
-        </div>
-
-        <button
-          onClick={() => setShowCreateForm(!showCreateForm)}
-          className={`flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 ${
-            showCreateForm ? 'bg-slate-500 hover:bg-slate-600 focus:ring-slate-500' : 'bg-indigo-600 hover:bg-indigo-700 focus:ring-indigo-500'
-          }`}
-        >
-          {showCreateForm ? 'Close Form' : 'Create New User'}
-        </button>
-      </div>
-
-      {showCreateForm && (
-        <div className="animate-in fade-in slide-in-from-top-4 duration-300 ease-out mb-8">
-          <CreateUserForm />
-        </div>
-      )}
-
+    <div className="space-y-6 max-w-7xl mx-auto ">
       <section className="rounded-[1.5rem] border border-slate-200 bg-white p-4 shadow-sm sm:rounded-[2rem] sm:p-5">
         <div className="mb-4">
           <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Dashboard Filters</p>

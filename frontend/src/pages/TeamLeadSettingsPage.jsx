@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import CreateAgentForm from '../components/users/CreateAgentForm';
 import {
   deactivateDashboardUser,
   fetchTeamLeadDashboard,
@@ -18,6 +19,7 @@ const TeamLeadSettingsPage = () => {
   const [actionLoadingKey, setActionLoadingKey] = useState(null);
   const [editingUser, setEditingUser] = useState(null);
   const [isEditSubmitting, setIsEditSubmitting] = useState(false);
+  const [showCreateForm, setShowCreateForm] = useState(false);
 
   const loadUsers = async () => {
     setIsLoading(true);
@@ -128,11 +130,28 @@ const TeamLeadSettingsPage = () => {
             <h1 className="mt-2 text-3xl font-bold tracking-tight text-slate-900">Team User Settings</h1>
             <p className="mt-1 text-sm text-slate-500">Manage your team members here without crowding the analytics dashboard.</p>
           </div>
-          <div className="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-600">
-            <span className="font-semibold text-slate-900">{users.length}</span> team users
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-600">
+              <span className="font-semibold text-slate-900">{users.length}</span> team users
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowCreateForm((current) => !current)}
+              className={`rounded-xl px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition ${
+                showCreateForm ? 'bg-slate-500 hover:bg-slate-600' : 'bg-indigo-600 hover:bg-indigo-700'
+              }`}
+            >
+              {showCreateForm ? 'Close Form' : 'Add New Agent'}
+            </button>
           </div>
         </div>
       </section>
+
+      {showCreateForm && (
+        <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
+          <CreateAgentForm />
+        </section>
+      )}
 
       {banner && <div className="rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm font-medium text-indigo-800">{banner}</div>}
       {error && <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">{error}</div>}
