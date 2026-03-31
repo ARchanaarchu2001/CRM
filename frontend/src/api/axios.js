@@ -21,6 +21,10 @@ export const axiosPublic = axios.create({
 let refreshPromise = null;
 
 const isAuthRequest = (url = '') => String(url).includes('/auth/');
+const shouldForceLogout = (error) => {
+  const status = error?.response?.status;
+  return status === 401 || status === 403;
+};
 
 const getFreshAccessToken = async () => {
   if (!refreshPromise) {
@@ -83,8 +87,9 @@ axiosPrivate.interceptors.response.use(
         return axiosPrivate(originalRequest);
         
       } catch (refreshError) {
-        // Ultimate failure: Token completely dead, kick out user locally
-        if (store) {
+        // Only force logout when refresh is truly unauthorized/forbidden.
+        // Temporary server issues should not immediately destroy the session UI.
+        if (store && shouldForceLogout(refreshError)) {
           store.dispatch({
             type: 'auth/logoutLocally',
             payload: {
