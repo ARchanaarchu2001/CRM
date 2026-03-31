@@ -694,25 +694,11 @@ export const removeUserFromSystem = asyncHandler(async (req, res) => {
     }
   }
 
-  if (targetUser.role === ROLES.AGENT) {
-    targetUser.team = null;
-    targetUser.teamLead = null;
-    targetUser.assignedTeam = null;
-  }
-
-  targetUser.isActive = false;
-  targetUser.isBlocked = true;
-  targetUser.isDeleted = true;
-  targetUser.deletedAt = new Date();
-  targetUser.deletedBy = req.user._id;
-  targetUser.updatedBy = req.user._id;
-  targetUser.refreshToken = null;
-
-  await targetUser.save({ validateBeforeSave: false });
+  await User.deleteOne({ _id: targetUser._id });
 
   res.status(200).json({
     success: true,
-    message: `${targetUser.fullName} was removed from the system successfully`,
+    message: `${targetUser.fullName} was deleted from the database successfully`,
   });
 });
 

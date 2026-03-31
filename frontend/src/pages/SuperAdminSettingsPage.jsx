@@ -9,7 +9,6 @@ import {
   moveDashboardUserToTeam,
   reactivateDashboardUser,
   removeDashboardUser,
-  removeDashboardUserFromTeam,
   updateDashboardUser,
 } from '../api/dashboard.js';
 
@@ -77,8 +76,8 @@ const SuperAdminSettingsPage = () => {
     }
   };
 
-  const handleRemoveFromTeam = async (user) => {
-    if (!window.confirm(`Remove ${user.fullName} from the team?`)) {
+  const handleRemoveAgent = async (user) => {
+    if (!window.confirm(`Remove ${user.fullName} completely from the system?`)) {
       return;
     }
 
@@ -86,11 +85,11 @@ const SuperAdminSettingsPage = () => {
     setBanner('');
 
     try {
-      await removeDashboardUserFromTeam(user._id);
-      setBanner(`${user.fullName} was removed from the team.`);
+      const response = await removeDashboardUser(user._id);
+      setBanner(response.message || `${user.fullName} was removed from the system.`);
       await loadSettingsData();
     } catch (removeError) {
-      setBanner(removeError.response?.data?.message || 'Failed to remove user from team');
+      setBanner(removeError.response?.data?.message || 'Failed to remove agent');
     } finally {
       setActionLoadingKey(null);
     }
@@ -303,11 +302,11 @@ const SuperAdminSettingsPage = () => {
                           </button>
                           <button
                             type="button"
-                            onClick={() => handleRemoveFromTeam(user)}
+                            onClick={() => handleRemoveAgent(user)}
                             disabled={!isAgent || actionLoadingKey === `remove-${user._id}`}
                             className="rounded-xl border border-rose-300 px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-40"
                           >
-                            {actionLoadingKey === `remove-${user._id}` ? 'Removing...' : 'Remove From Team'}
+                            {actionLoadingKey === `remove-${user._id}` ? 'Removing...' : 'Remove Agent'}
                           </button>
                           <button
                             type="button"
