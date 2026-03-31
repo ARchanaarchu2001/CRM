@@ -14,10 +14,19 @@ const MainLayout = () => {
   };
 
   const links = [
-    { to: role === 'agent' ? '/agent-dash' : '/dashboard', label: 'Home', show: true },
+    {
+      to:
+        role === 'agent'
+          ? '/agent-dash'
+          : role === 'data_analyst'
+            ? '/analyst-dash'
+            : '/dashboard',
+      label: 'Home',
+      show: true,
+    },
     { to: '/admin-dash', label: 'Admin Dashboard', show: ['super_admin'].includes(role) },
 
-    { to: '/analyst-dash', label: 'Analyst Workspace', show: ['data_analyst', 'super_admin'].includes(role) },
+    { to: '/analyst-dash', label: 'Analyst Workspace', show: ['super_admin'].includes(role) },
     { to: '/analyst-overview', label: 'Analyst Overview', show: ['data_analyst'].includes(role) },
     { to: '/analyst-agent-performance', label: 'Agent Performance', show: ['data_analyst'].includes(role) },
 

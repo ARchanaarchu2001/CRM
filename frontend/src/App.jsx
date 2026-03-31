@@ -76,9 +76,11 @@ function App() {
                 <Route path="/team-lead/agents/:agentId/dashboard" element={<AgentDashboard />} />
                 <Route path="/team-lead/agents/:agentId/batches/:batchId" element={<AgentBatchPage />} />
                 <Route path="/team-lead/agents/:agentId/pipeline" element={<AgentPipelinePage />} />
+                <Route path="/team-lead/agents/:agentId/queue/:queueType" element={<AgentQueuePage />} />
                 <Route path="/analyst/agents/:agentId/dashboard" element={<AgentDashboard />} />
                 <Route path="/analyst/agents/:agentId/batches/:batchId" element={<AgentBatchPage />} />
                 <Route path="/analyst/agents/:agentId/pipeline" element={<AgentPipelinePage />} />
+                <Route path="/analyst/agents/:agentId/queue/:queueType" element={<AgentQueuePage />} />
               </Route>
 
               <Route element={<RoleProtectedRoute allowedRoles={['manager', 'super_admin']} />}>

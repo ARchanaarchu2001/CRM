@@ -114,8 +114,8 @@ export const getDynamicKpiTitles = (rangeInfo) => {
     dials: `${prefix} Dials`,
     submissions: `${prefix} Submissions`,
     activations: `${prefix} Activations`,
-    pipelineCount: `${prefix} Pipeline Count`,
-    overduePipelineCount: `${prefix} Overdue Pipeline`,
+    pipelineCount: 'Active Pipeline Count',
+    overduePipelineCount: 'Overdue Pipeline',
     pendingLeads: `${prefix} Pending Leads`,
   };
 };
@@ -185,10 +185,7 @@ const isOverduePipelineAssignment = (assignment, rangeInfo) => {
     return false;
   }
 
-  return (
-    assignment.pipelineFollowUpDate < getTodayDateString() &&
-    isDateWithinRange(assignment.pipelineFollowUpDate, rangeInfo)
-  );
+  return assignment.pipelineFollowUpDate < getTodayDateString();
 };
 
 const getSubmissionDate = (assignment) => {
@@ -336,7 +333,7 @@ export const buildDashboardAnalytics = ({ agents, assignments, rangeInfo, includ
       updateLastActivity(agentMetrics, activationDate);
     }
 
-    if (isPipelineAssignmentInRange(assignment, rangeInfo)) {
+    if (isPipelineActiveAssignment(assignment)) {
       summary.pipelineCount += 1;
       agentMetrics.pipelineCount += 1;
       updateLastActivity(agentMetrics, assignment.pipelineFollowUpDate || assignment.updatedAt);

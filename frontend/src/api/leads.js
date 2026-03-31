@@ -99,6 +99,11 @@ export const fetchManagedAgentPipelineView = async (agentId) => {
   return response.data;
 };
 
+export const fetchManagedAgentQueueView = async (agentId) => {
+  const response = await axiosPrivate.get(`/leads/team-view/agents/${agentId}/queue`);
+  return response.data;
+};
+
 export const fetchManagedAgentBatchView = async (agentId, batchId) => {
   const response = await axiosPrivate.get(`/leads/team-view/agents/${agentId}/batches/${batchId}`);
   return response.data;

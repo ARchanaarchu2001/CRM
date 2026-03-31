@@ -272,6 +272,8 @@ const parseJsonArrayField = (value, fallback = []) => {
   }
 };
 
+const formatSearchableValue = (value) => String(value || '').trim().toLowerCase();
+
 const sanitizeAddedColumns = (value) =>
   parseJsonArrayField(value).reduce((accumulator, item) => {
     const name = String(item?.name || '').trim();
@@ -571,6 +573,8 @@ export const importLeads = asyncHandler(async (req, res) => {
 
 export const getAnalystLeads = asyncHandler(async (req, res) => {
   const { product, duplicateStatus, search, assignmentStatus, batchName, importBatchId } = req.query;
+  const page = Math.max(Number.parseInt(req.query.page, 10) || 1, 1);
+  const pageSize = Math.min(Math.max(Number.parseInt(req.query.pageSize, 10) || 100, 1), 200);
 
   const filters = {};
   if (product) {
@@ -611,7 +615,13 @@ export const getAnalystLeads = asyncHandler(async (req, res) => {
       })
     : leads;
 
-  const leadIds = filteredLeads.map((lead) => lead._id);
+  const totalCount = filteredLeads.length;
+  const totalPages = Math.max(Math.ceil(totalCount / pageSize), 1);
+  const safePage = Math.min(page, totalPages);
+  const startIndex = (safePage - 1) * pageSize;
+  const paginatedLeads = filteredLeads.slice(startIndex, startIndex + pageSize);
+
+  const leadIds = paginatedLeads.map((lead) => lead._id);
   const assignments = leadIds.length
     ? await LeadAssignment.find({ lead: { $in: leadIds } })
       .select(
@@ -631,8 +641,11 @@ export const getAnalystLeads = asyncHandler(async (req, res) => {
   }, {});
 
   res.status(200).json({
-    totalCount: filteredLeads.length,
-    leads: filteredLeads.map((lead) => ({
+    totalCount,
+    page: safePage,
+    pageSize,
+    totalPages,
+    leads: paginatedLeads.map((lead) => ({
       ...lead,
       assignments: assignmentsByLeadId[String(lead._id)] || [],
     })),
@@ -728,6 +741,28 @@ export const assignLeadsToAgent = asyncHandler(async (req, res) => {
   await LeadAssignment.insertMany(assignments);
   await Lead.updateMany({ _id: { $in: leadIds } }, { $inc: { assignedAgentCount: 1 } });
 
+  const productList = [...new Set(leads.map((lead) => String(lead.product || 'general').toLowerCase()))];
+  const batchNameList = [...new Set(leads.map((lead) => String(lead.batchName || '').trim()).filter(Boolean))];
+  const productLabel =
+    productList.length === 1
+      ? productList[0].toUpperCase()
+      : `${productList.length} products`;
+
+  try {
+    getIO().emit('assignmentCreated', {
+      agentId: agent._id.toString(),
+      assignedBy: req.user._id.toString(),
+      leadCount: leadIds.length,
+      products: productList,
+      productLabel,
+      batchNames: batchNameList,
+      message: `You received ${leadIds.length} new lead${leadIds.length === 1 ? '' : 's'} for ${productLabel}.`,
+      createdAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error('Failed to emit assignmentCreated', error);
+  }
+
   res.status(201).json({
     message: `Assigned ${leadIds.length} leads to ${agent.fullName}`,
   });
@@ -755,6 +790,11 @@ export const deleteAnalystBatch = asyncHandler(async (req, res) => {
 
 export const getMyAssignments = asyncHandler(async (req, res) => {
   const { product, status, search, batchName, importBatchId, pipeline } = req.query;
+  const page = Number.parseInt(req.query.page, 10);
+  const pageSize = Number.parseInt(req.query.pageSize, 10);
+  const shouldPaginate = Number.isFinite(page) || Number.isFinite(pageSize);
+  const normalizedPageSize = Math.min(Math.max(pageSize || 100, 1), 200);
+  const normalizedPage = Math.max(page || 1, 1);
 
   const filters = {
     agent: req.user._id,
@@ -780,32 +820,107 @@ export const getMyAssignments = asyncHandler(async (req, res) => {
     filters.importBatch = importBatchId;
   }
 
+  const contactFilter = String(req.query.contact || '').trim().toLowerCase();
+  const contactabilityStatusFilter = String(req.query.contactabilityStatus || '').trim().toLowerCase();
+  const callingRemarkFilter = String(req.query.callingRemark || '').trim().toLowerCase();
+  const interestedRemarkFilter = String(req.query.interestedRemark || '').trim().toLowerCase();
+  const notInterestedRemarkFilter = String(req.query.notInterestedRemark || '').trim().toLowerCase();
+  let rawFilters = {};
+  try {
+    rawFilters = req.query.rawFilters ? JSON.parse(req.query.rawFilters) : {};
+  } catch {
+    rawFilters = {};
+  }
+
   const assignments = await LeadAssignment.find(filters)
     .sort({ createdAt: -1 })
     .populate('lead')
     .lean();
 
-  const filteredAssignments = search
-    ? assignments.filter((assignment) => {
-      const contactNumber = assignment.lead?.contactNumber || '';
-      const name =
-        assignment.lead?.rawData?.NAME ||
-        assignment.lead?.rawData?.Name ||
-        assignment.lead?.rawData?.name ||
-        '';
-      return (
-        contactNumber.toLowerCase().includes(String(search).toLowerCase()) ||
-        String(name).toLowerCase().includes(String(search).toLowerCase())
+  const safeSearch = String(search || '').trim().toLowerCase();
+
+  const filteredAssignments = assignments.filter((assignment) => {
+    const lead = assignment.lead || {};
+    const contactNumber = formatSearchableValue(lead.contactNumber);
+    const productValue = formatSearchableValue(assignment.product);
+    const contactabilityStatusValue = formatSearchableValue(assignment.contactabilityStatus);
+    const callingRemarkValue = formatSearchableValue(assignment.callingRemark);
+    const interestedRemarkValue = formatSearchableValue(assignment.interestedRemark);
+    const notInterestedRemarkValue = formatSearchableValue(assignment.notInterestedRemark);
+    const statusValue = formatSearchableValue(assignment.status);
+    const rawData = lead.rawData || {};
+
+    if (contactFilter && !contactNumber.includes(contactFilter)) {
+      return false;
+    }
+    if (contactabilityStatusFilter && !contactabilityStatusValue.includes(contactabilityStatusFilter)) {
+      return false;
+    }
+    if (callingRemarkFilter && !callingRemarkValue.includes(callingRemarkFilter)) {
+      return false;
+    }
+    if (interestedRemarkFilter && !interestedRemarkValue.includes(interestedRemarkFilter)) {
+      return false;
+    }
+    if (notInterestedRemarkFilter && !notInterestedRemarkValue.includes(notInterestedRemarkFilter)) {
+      return false;
+    }
+
+    const rawFilterEntries = Object.entries(rawFilters || {});
+    for (const [rawKey, rawValue] of rawFilterEntries) {
+      const normalizedRawFilter = String(rawValue || '').trim().toLowerCase();
+      if (!normalizedRawFilter) {
+        continue;
+      }
+
+      if (!formatSearchableValue(rawData?.[rawKey]).includes(normalizedRawFilter)) {
+        return false;
+      }
+    }
+
+    if (safeSearch) {
+      const valuesToSearch = [
+        lead.contactNumber,
+        assignment.batchName,
+        assignment.product,
+        assignment.contactabilityStatus,
+        assignment.callingRemark,
+        assignment.interestedRemark,
+        assignment.notInterestedRemark,
+        assignment.status,
+        ...Object.values(rawData),
+      ];
+
+      const found = valuesToSearch.some((value) =>
+        formatSearchableValue(value).includes(safeSearch)
       );
-    })
-    : assignments;
+
+      if (!found) {
+        return false;
+      }
+    }
+
+    return true;
+  });
 
   const remarkConfigMap = Object.fromEntries(
     (await ProductRemarkConfig.find()).map((config) => [config.product, config])
   );
 
+  const totalCount = filteredAssignments.length;
+  const totalPages = shouldPaginate ? Math.max(Math.ceil(totalCount / normalizedPageSize), 1) : 1;
+  const safePage = shouldPaginate ? Math.min(normalizedPage, totalPages) : 1;
+  const startIndex = shouldPaginate ? (safePage - 1) * normalizedPageSize : 0;
+  const visibleAssignments = shouldPaginate
+    ? filteredAssignments.slice(startIndex, startIndex + normalizedPageSize)
+    : filteredAssignments;
+
   res.status(200).json({
-    assignments: filteredAssignments.map((assignment) => ({
+    totalCount,
+    page: safePage,
+    pageSize: shouldPaginate ? normalizedPageSize : totalCount,
+    totalPages,
+    assignments: visibleAssignments.map((assignment) => ({
       ...assignment,
       remarkConfig: remarkConfigMap[assignment.product] || null,
     })),
@@ -1678,6 +1793,44 @@ export const getManagedAgentPipelineView = asyncHandler(async (req, res) => {
         ...assignment,
         isDueToday: assignment.pipelineFollowUpDate === today,
         isOverdue: Boolean(assignment.pipelineFollowUpDate && assignment.pipelineFollowUpDate < today),
+      })),
+    },
+  });
+});
+
+export const getManagedAgentQueueView = asyncHandler(async (req, res) => {
+  if (![ROLES.TEAM_LEAD, ROLES.SUPER_ADMIN, ROLES.DATA_ANALYST].includes(req.user.role)) {
+    res.status(403);
+    throw new Error('Forbidden');
+  }
+
+  const agent = await getViewableAgentForLead(req.user, req.params.agentId);
+  if (!agent) {
+    res.status(404);
+    throw new Error('Agent not found');
+  }
+
+  const assignments = await LeadAssignment.find({
+    agent: agent._id,
+  })
+    .sort({ createdAt: -1 })
+    .populate('lead')
+    .lean();
+
+  const remarkConfigMap = Object.fromEntries(
+    (await ProductRemarkConfig.find()).map((config) => [config.product, config])
+  );
+
+  res.status(200).json({
+    success: true,
+    view: {
+      agent: {
+        _id: agent._id,
+        fullName: agent.fullName,
+      },
+      assignments: assignments.map((assignment) => ({
+        ...assignment,
+        remarkConfig: remarkConfigMap[assignment.product] || null,
       })),
     },
   });

@@ -7,6 +7,7 @@ import {
   getManagedAgentBatchView,
   getManagedAgentDashboardView,
   getManagedAgentPipelineView,
+  getManagedAgentQueueView,
   getMyAssignmentBatches,
   getMyPipelineAssignments,
   getMyPipelineSummary,
@@ -42,6 +43,11 @@ router.get(
   '/team-view/agents/:agentId/pipeline',
   authorizeRoles(ROLES.TEAM_LEAD, ROLES.SUPER_ADMIN, ROLES.DATA_ANALYST),
   getManagedAgentPipelineView
+);
+router.get(
+  '/team-view/agents/:agentId/queue',
+  authorizeRoles(ROLES.TEAM_LEAD, ROLES.SUPER_ADMIN, ROLES.DATA_ANALYST),
+  getManagedAgentQueueView
 );
 router.get(
   '/team-view/agents/:agentId/batches/:batchId',

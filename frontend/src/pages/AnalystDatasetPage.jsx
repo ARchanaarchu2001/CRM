@@ -25,6 +25,8 @@ const DEFAULT_REMARK_CONFIG = {
   notInterestedRemarkLabel: 'Not Interested Remarks',
 };
 
+const PAGE_SIZE = 100;
+
 const escapeCsvValue = (value) => {
   const stringValue = String(value ?? '');
   if (/[",\n]/.test(stringValue)) {
@@ -56,12 +58,15 @@ const AnalystDatasetPage = () => {
   });
   const [leads, setLeads] = useState([]);
   const [totalCount, setTotalCount] = useState(0);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
   const [selectedLeadIds, setSelectedLeadIds] = useState([]);
   const [lastSelectedIndex, setLastSelectedIndex] = useState(null);
   const [isDragSelecting, setIsDragSelecting] = useState(false);
   const [dragSelectionMode, setDragSelectionMode] = useState('select');
   const [actionMessage, setActionMessage] = useState('');
   const [copiedContact, setCopiedContact] = useState('');
+  const [isAssigning, setIsAssigning] = useState(false);
 
   const loadMetadata = async () => {
     const data = await fetchLeadMetadata();
@@ -71,18 +76,24 @@ const AnalystDatasetPage = () => {
     setAssignAgentId((current) => current || data.agents?.[0]?._id || '');
   };
 
-  const loadLeads = async (filters = leadFilters) => {
+  const loadLeads = async (filters = leadFilters, page = currentPage) => {
     const response = await fetchAnalystLeads({
       importBatchId: batchId,
       ...filters,
+      page,
+      pageSize: PAGE_SIZE,
     });
     setLeads(response.leads || []);
     setTotalCount(response.totalCount || 0);
+    setCurrentPage(response.page || 1);
+    setTotalPages(response.totalPages || 1);
+    setSelectedLeadIds([]);
+    setLastSelectedIndex(null);
   };
 
   useEffect(() => {
     loadMetadata();
-    loadLeads();
+    loadLeads(leadFilters, 1);
   }, [batchId]);
 
   useEffect(() => {
@@ -97,10 +108,11 @@ const AnalystDatasetPage = () => {
       ...current,
       assignmentStatus: nextAssignmentStatus,
     }));
+    setCurrentPage(1);
     loadLeads({
       ...leadFilters,
       assignmentStatus: nextAssignmentStatus,
-    });
+    }, 1);
   }, [requestedView]);
 
   useEffect(() => {
@@ -242,7 +254,8 @@ const AnalystDatasetPage = () => {
 
   const handleFilterSubmit = async (event) => {
     event.preventDefault();
-    await loadLeads(leadFilters);
+    setCurrentPage(1);
+    await loadLeads(leadFilters, 1);
   };
 
   const handleAssign = async () => {
@@ -251,21 +264,39 @@ const AnalystDatasetPage = () => {
       return;
     }
 
+    const selectedAgent = agents.find((agent) => agent._id === assignAgentId);
+    const selectedCount = selectedLeadIds.length;
+    setIsAssigning(true);
+
     try {
       const response = await assignLeads({
         leadIds: selectedLeadIds,
         agentId: assignAgentId,
       });
-      setActionMessage(response.message);
+      setActionMessage(
+        response.message ||
+          `${selectedCount} lead${selectedCount === 1 ? '' : 's'} assigned to ${
+            selectedAgent?.fullName || selectedAgent?.email || 'the selected agent'
+          }.`
+      );
       if (leadFilters.assignmentStatus === 'unassigned') {
         setLeads((current) => current.filter((lead) => !selectedLeadIds.includes(lead._id)));
       }
       setSelectedLeadIds([]);
       setLastSelectedIndex(null);
-      await loadLeads();
+      await loadLeads(leadFilters, currentPage);
     } catch (error) {
       setActionMessage(error.response?.data?.message || 'Could not assign leads');
+    } finally {
+      setIsAssigning(false);
     }
+  };
+
+  const handlePageChange = async (nextPage) => {
+    if (nextPage < 1 || nextPage > totalPages || nextPage === currentPage) {
+      return;
+    }
+    await loadLeads(leadFilters, nextPage);
   };
 
   const handleCopyContact = async (value) => {
@@ -424,14 +455,42 @@ const AnalystDatasetPage = () => {
             <button
               type="button"
               onClick={handleAssign}
-              className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+              disabled={isAssigning}
+              className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              Assign Selected
+              {isAssigning ? 'Assigning...' : 'Assign Selected'}
             </button>
           </div>
         </div>
 
         {actionMessage && <p className="mt-4 text-sm text-slate-600">{actionMessage}</p>}
+      </section>
+
+      <section className="rounded-2xl border border-slate-200 bg-white px-6 py-4 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-slate-600">
+          <div>
+            Showing page <strong>{currentPage}</strong> of <strong>{totalPages}</strong> · {PAGE_SIZE} rows per page ·{' '}
+            <strong>{totalCount}</strong> total rows
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => handlePageChange(currentPage - 1)}
+              disabled={currentPage <= 1}
+              className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Previous
+            </button>
+            <button
+              type="button"
+              onClick={() => handlePageChange(currentPage + 1)}
+              disabled={currentPage >= totalPages}
+              className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Next
+            </button>
+          </div>
+        </div>
       </section>
 
       <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -560,6 +619,32 @@ const AnalystDatasetPage = () => {
                   ))}
             </tbody>
           </table>
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-slate-200 bg-white px-6 py-4 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-slate-600">
+          <div>
+            Page <strong>{currentPage}</strong> of <strong>{totalPages}</strong>
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => handlePageChange(currentPage - 1)}
+              disabled={currentPage <= 1}
+              className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Previous
+            </button>
+            <button
+              type="button"
+              onClick={() => handlePageChange(currentPage + 1)}
+              disabled={currentPage >= totalPages}
+              className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Next
+            </button>
+          </div>
         </div>
       </section>
     </div>

@@ -22,6 +22,7 @@ const DEFAULT_REMARK_CONFIG = {
   interestedRemarks: [],
   notInterestedRemarks: [],
 };
+const PAGE_SIZE = 100;
 
 const splitAttemptValue = (value) => {
   const normalizedValue = String(value || '').trim();
@@ -70,7 +71,11 @@ const AgentBatchPage = () => {
   const [pipelineDraft, setPipelineDraft] = useState(null);
   const [columnFilters, setColumnFilters] = useState({});
   const [sortConfig, setSortConfig] = useState({ key: 'updatedAt', direction: 'desc' });
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
   const timersRef = useRef(new Map());
+  const serializedColumnFilters = JSON.stringify(columnFilters);
 
   const loadBatches = async () => {
     if (isManagedView) {
@@ -84,6 +89,9 @@ const AgentBatchPage = () => {
   const loadAssignments = async () => {
     if (!batchId) {
       setAssignments([]);
+      setTotalCount(0);
+      setCurrentPage(1);
+      setTotalPages(1);
       return;
     }
 
@@ -91,13 +99,35 @@ const AgentBatchPage = () => {
       const data = await fetchManagedAgentBatchView(agentId, batchId);
       setBatches(data.view?.batch ? [data.view.batch] : []);
       setAssignments(data.view?.assignments || []);
+      setTotalCount((data.view?.assignments || []).length);
+      setCurrentPage(1);
+      setTotalPages(1);
       return;
     }
 
     const data = await fetchMyAssignments({
       importBatchId: batchId,
+      page: currentPage,
+      pageSize: PAGE_SIZE,
+      contact: columnFilters.contact || '',
+      product: columnFilters.product || '',
+      contactabilityStatus: columnFilters.contactabilityStatus || '',
+      callingRemark: columnFilters.callingRemark || '',
+      interestedRemark: columnFilters.interestedRemark || '',
+      notInterestedRemark: columnFilters.notInterestedRemark || '',
+      status: columnFilters.status || '',
+      rawFilters: JSON.stringify(
+        Object.fromEntries(
+          Object.entries(columnFilters)
+            .filter(([key, value]) => key.startsWith('raw:') && String(value || '').trim())
+            .map(([key, value]) => [key.replace('raw:', ''), value])
+        )
+      ),
     });
     setAssignments(data.assignments || []);
+    setTotalCount(data.totalCount || 0);
+    setCurrentPage(data.page || 1);
+    setTotalPages(data.totalPages || 1);
   };
 
   useEffect(() => {
@@ -105,8 +135,16 @@ const AgentBatchPage = () => {
   }, [batchId, agentId]);
 
   useEffect(() => {
-    loadAssignments();
+    setCurrentPage(1);
   }, [batchId, agentId]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [serializedColumnFilters]);
+
+  useEffect(() => {
+    loadAssignments();
+  }, [batchId, agentId, currentPage, serializedColumnFilters]);
 
   useEffect(() => {
     connectSocket();
@@ -153,32 +191,7 @@ const AgentBatchPage = () => {
   const contactHeader = assignments[0]?.lead?.contactColumn || 'Contact';
   const visibleReadOnlyHeaders = readOnlyHeaders.filter((header) => header !== contactHeader);
   const filteredAssignments = useMemo(() => {
-    const entries = assignments.filter((assignment) => {
-      const lead = assignment.lead || {};
-      const checks = [
-        ['contact', formatContactDisplay(lead.rawData?.[contactHeader] || lead.contactNumber)],
-        ['product', assignment.product],
-        ['contactabilityStatus', assignment.contactabilityStatus],
-        ['callingRemark', assignment.callingRemark],
-        ['interestedRemark', assignment.interestedRemark],
-        ['notInterestedRemark', assignment.notInterestedRemark],
-        ['status', assignment.status],
-      ];
-
-      for (const header of visibleReadOnlyHeaders) {
-        checks.push([`raw:${header}`, lead.rawData?.[header] || '']);
-      }
-
-      return checks.every(([key, value]) => {
-        const filterValue = String(columnFilters[key] || '').trim().toLowerCase();
-        if (!filterValue) {
-          return true;
-        }
-        return String(value || '').toLowerCase().includes(filterValue);
-      });
-    });
-
-    const sortedEntries = [...entries].sort((left, right) => {
+    const sortedEntries = [...assignments].sort((left, right) => {
       const leftLead = left.lead || {};
       const rightLead = right.lead || {};
 
@@ -205,7 +218,7 @@ const AgentBatchPage = () => {
     });
 
     return sortedEntries;
-  }, [assignments, columnFilters, contactHeader, sortConfig, visibleReadOnlyHeaders]);
+  }, [assignments, contactHeader, sortConfig, visibleReadOnlyHeaders]);
   const batchStats = useMemo(() => {
     const countMatches = (matcher) => filteredAssignments.filter(matcher).length;
     const isNotDialed = (assignment) =>
@@ -321,6 +334,13 @@ const AgentBatchPage = () => {
 
     await hideAssignmentBatch(batchId);
     navigate('/agent-dash');
+  };
+
+  const handlePageChange = (nextPage) => {
+    if (nextPage < 1 || nextPage > totalPages || nextPage === currentPage) {
+      return;
+    }
+    setCurrentPage(nextPage);
   };
 
   const handleCopyContact = async (value) => {
@@ -500,7 +520,7 @@ const AgentBatchPage = () => {
         {selectedBatch && (
           <div className="mt-4 space-y-3">
             <div className="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-600">
-              Working batch: <strong>{selectedBatch.batchName}</strong> ({filteredAssignments.length} visible rows)
+              Working batch: <strong>{selectedBatch.batchName}</strong> ({totalCount} total rows, page {currentPage} of {totalPages})
             </div>
             <div className="flex flex-wrap gap-3 text-sm">
               <div className="rounded-2xl bg-slate-50 px-4 py-3 text-slate-700">{batchStats.total} total</div>
@@ -515,6 +535,35 @@ const AgentBatchPage = () => {
 
         {message && <p className="mt-4 text-sm text-slate-600">{message}</p>}
       </section>
+
+      {!isManagedView && totalPages > 1 && (
+        <section className="rounded-2xl border border-slate-200 bg-white px-6 py-4 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-slate-600">
+            <div>
+              Showing page <strong>{currentPage}</strong> of <strong>{totalPages}</strong> · {PAGE_SIZE} rows per page ·{' '}
+              <strong>{totalCount}</strong> total rows
+            </div>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => handlePageChange(currentPage - 1)}
+                disabled={currentPage <= 1}
+                className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Previous
+              </button>
+              <button
+                type="button"
+                onClick={() => handlePageChange(currentPage + 1)}
+                disabled={currentPage >= totalPages}
+                className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        </section>
+      )}
 
       {!isManagedView && pipelineDraft && (
         <section className="rounded-2xl border border-amber-200 bg-amber-50 p-6 shadow-sm">
@@ -973,6 +1022,34 @@ const AgentBatchPage = () => {
           </table>
         </div>
       </section>
+
+      {!isManagedView && totalPages > 1 && (
+        <section className="rounded-2xl border border-slate-200 bg-white px-6 py-4 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-slate-600">
+            <div>
+              Page <strong>{currentPage}</strong> of <strong>{totalPages}</strong>
+            </div>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => handlePageChange(currentPage - 1)}
+                disabled={currentPage <= 1}
+                className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Previous
+              </button>
+              <button
+                type="button"
+                onClick={() => handlePageChange(currentPage + 1)}
+                disabled={currentPage >= totalPages}
+                className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        </section>
+      )}
     </div>
   );
 };

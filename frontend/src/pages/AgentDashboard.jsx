@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useSelector } from 'react-redux';
 import { fetchAgentSelfDashboard } from '../api/dashboard.js';
 import {
   fetchManagedAgentDashboardView,
@@ -10,12 +11,14 @@ import {
   restoreAssignmentBatch,
 } from '../api/leads.js';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { connectSocket, socket } from '../utils/socketClient.js';
 
 const AgentDashboard = () => {
   const { agentId } = useParams();
   const isManagedView = Boolean(agentId);
   const navigate = useNavigate();
   const location = useLocation();
+  const { user } = useSelector((state) => state.auth);
   const [batches, setBatches] = useState([]);
   const [completedBatches, setCompletedBatches] = useState([]);
   const [batchActionState, setBatchActionState] = useState({});
@@ -149,6 +152,43 @@ const AgentDashboard = () => {
     }
   }, [agentId, isManagedView]);
 
+  useEffect(() => {
+    if (isManagedView || !user?._id) {
+      return undefined;
+    }
+
+    connectSocket();
+
+    const handleAssignmentCreated = async (payload) => {
+      if (String(payload?.agentId || '') !== String(user._id)) {
+        return;
+      }
+
+      const alertMessage =
+        payload?.message ||
+        `You received ${payload?.leadCount || 0} new lead${payload?.leadCount === 1 ? '' : 's'}.`;
+
+      setMessage(alertMessage);
+
+      await Promise.all([
+        loadBatches(),
+        loadQueueSummary(),
+        loadPipelineSummary(),
+        loadPerformanceSummary(),
+      ]);
+
+      if (typeof window !== 'undefined' && typeof window.alert === 'function') {
+        window.alert(alertMessage);
+      }
+    };
+
+    socket.on('assignmentCreated', handleAssignmentCreated);
+
+    return () => {
+      socket.off('assignmentCreated', handleAssignmentCreated);
+    };
+  }, [isManagedView, user?._id]);
+
   const handleHideBatch = async (importBatchId) => {
     setBatchActionState((current) => ({
       ...current,
@@ -273,22 +313,34 @@ const AgentDashboard = () => {
         </div>
 
         <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <div className={`rounded-2xl border border-amber-200 bg-amber-50 p-5 shadow-sm ${isManagedView ? '' : 'hover:bg-amber-100'}`}>
+          <Link
+            to={isManagedView ? `${managedBasePath}/queue/pending` : '/agent-queue/pending'}
+            className={`rounded-2xl border border-amber-200 bg-amber-50 p-5 shadow-sm ${isManagedView ? 'hover:bg-amber-100' : 'hover:bg-amber-100'}`}
+          >
             <div className="text-sm font-medium text-amber-900">Pending / Undialed</div>
             <div className="mt-2 text-3xl font-bold text-amber-800">{queueSummary.pending}</div>
-          </div>
-          <div className={`rounded-2xl border border-yellow-200 bg-yellow-50 p-5 shadow-sm ${isManagedView ? '' : 'hover:bg-yellow-100'}`}>
+          </Link>
+          <Link
+            to={isManagedView ? `${managedBasePath}/queue/follow_up` : '/agent-queue/follow_up'}
+            className={`rounded-2xl border border-yellow-200 bg-yellow-50 p-5 shadow-sm ${isManagedView ? 'hover:bg-yellow-100' : 'hover:bg-yellow-100'}`}
+          >
             <div className="text-sm font-medium text-yellow-900">Follow Up</div>
             <div className="mt-2 text-3xl font-bold text-yellow-800">{queueSummary.followUp}</div>
-          </div>
-          <div className={`rounded-2xl border border-orange-200 bg-orange-50 p-5 shadow-sm ${isManagedView ? '' : 'hover:bg-orange-100'}`}>
+          </Link>
+          <Link
+            to={isManagedView ? `${managedBasePath}/queue/callback` : '/agent-queue/callback'}
+            className={`rounded-2xl border border-orange-200 bg-orange-50 p-5 shadow-sm ${isManagedView ? 'hover:bg-orange-100' : 'hover:bg-orange-100'}`}
+          >
             <div className="text-sm font-medium text-orange-900">Callback</div>
             <div className="mt-2 text-3xl font-bold text-orange-800">{queueSummary.callback}</div>
-          </div>
-          <div className={`rounded-2xl border border-emerald-200 bg-emerald-50 p-5 shadow-sm ${isManagedView ? '' : 'hover:bg-emerald-100'}`}>
+          </Link>
+          <Link
+            to={isManagedView ? `${managedBasePath}/queue/interested` : '/agent-queue/interested'}
+            className={`rounded-2xl border border-emerald-200 bg-emerald-50 p-5 shadow-sm ${isManagedView ? 'hover:bg-emerald-100' : 'hover:bg-emerald-100'}`}
+          >
             <div className="text-sm font-medium text-emerald-900">Interested</div>
             <div className="mt-2 text-3xl font-bold text-emerald-800">{queueSummary.interested}</div>
-          </div>
+          </Link>
         </div>
       </section>
 
