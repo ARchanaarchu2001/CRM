@@ -40,6 +40,15 @@ export const formatLastActivity = (value) => {
     return 'No activity yet';
   }
 
+  if (/^\d{4}-\d{2}-\d{2}$/.test(String(value))) {
+    const [year, month, day] = String(value).split('-').map(Number);
+    const date = new Date(year, month - 1, day);
+
+    return date.toLocaleDateString('en-US', {
+      dateStyle: 'medium',
+    });
+  }
+
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
     return 'No activity yet';
@@ -49,6 +58,23 @@ export const formatLastActivity = (value) => {
     dateStyle: 'medium',
     timeStyle: 'short',
   });
+};
+
+export const isLastActivityStale = (value, staleAfterMinutes = 60) => {
+  if (!value) {
+    return true;
+  }
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(String(value))) {
+    return true;
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return true;
+  }
+
+  return Date.now() - date.getTime() > staleAfterMinutes * 60 * 1000;
 };
 
 export const getFilterBadgeLabel = (filterInfo) => filterInfo?.displayLabel || 'Today';

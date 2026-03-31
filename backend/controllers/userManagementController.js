@@ -11,6 +11,7 @@ import {
   resolveDateRange,
 } from '../utils/dashboardAnalytics.js';
 import { getCurrentDateString } from '../utils/leadMetrics.js';
+import { getOnlineUserIds } from '../utils/socket.js';
 
 const normalizeTeamName = (value = '') => String(value).trim().replace(/\s+/g, ' ').toLowerCase();
 
@@ -495,6 +496,7 @@ export const getTeamLeadDashboard = asyncHandler(async (req, res) => {
     assignments,
     rangeInfo,
     includeTeamComparison: false,
+    onlineUserIds: getOnlineUserIds(),
   });
 
   res.status(200).json({
@@ -550,6 +552,7 @@ export const getSuperAdminDashboard = asyncHandler(async (req, res) => {
     assignments,
     rangeInfo,
     includeTeamComparison: true,
+    onlineUserIds: getOnlineUserIds(),
   });
   const conversionOverview = buildProductConversionOverview({
     analytics,

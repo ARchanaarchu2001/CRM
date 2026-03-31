@@ -1,7 +1,7 @@
 import React from 'react';
 import {
-  Area,
-  AreaChart,
+  Bar,
+  BarChart,
   CartesianGrid,
   ResponsiveContainer,
   Tooltip,
@@ -19,27 +19,18 @@ const MetricTrendChart = ({ title, description, data = [], metricKey, color }) =
 
       <div className="h-80">
         <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={data}>
-            <defs>
-              <linearGradient id={`gradient-${metricKey}`} x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor={color} stopOpacity={0.28} />
-                <stop offset="95%" stopColor={color} stopOpacity={0.02} />
-              </linearGradient>
-            </defs>
+          <BarChart data={data} margin={{ top: 8, right: 16, left: 0, bottom: 8 }}>
             <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" vertical={false} />
             <XAxis dataKey="label" tick={{ fill: '#475569', fontSize: 12 }} tickLine={false} axisLine={{ stroke: '#cbd5e1' }} />
             <YAxis allowDecimals={false} tick={{ fill: '#475569', fontSize: 12 }} tickLine={false} axisLine={{ stroke: '#cbd5e1' }} />
             <Tooltip />
-            <Area
-              type="monotone"
+            <Bar
               dataKey={metricKey}
-              stroke={color}
-              strokeWidth={3}
-              fill={`url(#gradient-${metricKey})`}
-              dot={{ r: 3, fill: color }}
-              activeDot={{ r: 5 }}
+              fill={color}
+              radius={[8, 8, 0, 0]}
+              maxBarSize={42}
             />
-          </AreaChart>
+          </BarChart>
         </ResponsiveContainer>
       </div>
     </section>

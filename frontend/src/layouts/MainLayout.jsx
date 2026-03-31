@@ -1,14 +1,25 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Link, Outlet, useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { logoutUser } from '../features/auth/authSlice.js';
+import { connectSocket, disconnectSocket, registerSocketPresence } from '../utils/socketClient.js';
 
 const MainLayout = () => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const { user, role } = useSelector((state) => state.auth);
 
+  useEffect(() => {
+    if (!user?._id) {
+      return;
+    }
+
+    connectSocket();
+    registerSocketPresence(user);
+  }, [user]);
+
   const handleLogout = async () => {
+    disconnectSocket();
     await dispatch(logoutUser());
     navigate('/login');
   };
@@ -36,7 +47,7 @@ const MainLayout = () => {
 
     { to: '/manager-dash', label: 'Manager', show: ['manager'].includes(role) },
 
-    { to: '/team-lead-dash', label: 'Team Lead', show: ['team_lead', 'manager'].includes(role) },
+    { to: '/team-lead-dash', label: 'Team Lead', show: ['manager'].includes(role) },
     { to: '/team-lead-conversion', label: 'Data Conversion', show: ['team_lead'].includes(role) },
     { to: '/team-lead-settings', label: 'Settings', show: ['team_lead'].includes(role) },
 

@@ -1,5 +1,5 @@
 import React from 'react';
-import { formatLastActivity, formatMetricValue } from '../../utils/dashboard.js';
+import { formatLastActivity, formatMetricValue, isLastActivityStale } from '../../utils/dashboard.js';
 
 const AgentAnalyticsTable = ({
   rows = [],
@@ -30,6 +30,10 @@ const AgentAnalyticsTable = ({
               onSelectAgent ? 'cursor-pointer hover:border-slate-300 hover:bg-slate-50/70' : ''
             } ${selectedAgentId === row.agentId ? 'border-indigo-300 bg-indigo-50/60' : 'bg-white'}`}
           >
+            {(() => {
+              const isStale = isLastActivityStale(row.lastActivity);
+              return (
+                <>
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-center gap-3 min-w-0">
                 {row.profilePhoto ? (
@@ -109,9 +113,16 @@ const AgentAnalyticsTable = ({
               </div>
               <div className="rounded-xl bg-slate-50 px-3 py-2">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Last Activity</p>
-                <p className="mt-1 font-medium text-slate-900">{formatLastActivity(row.lastActivity)}</p>
+                <div className="mt-1 flex items-center gap-2">
+                  <span className={`h-2.5 w-2.5 rounded-full ${isStale ? 'bg-rose-500' : 'bg-emerald-500'}`} />
+                  <p className={`font-medium ${isStale ? 'text-rose-700' : 'text-slate-900'}`}>{formatLastActivity(row.lastActivity)}</p>
+                </div>
+                {isStale && <p className="mt-1 text-[11px] font-semibold text-rose-600">No change in 1 hour</p>}
               </div>
             </div>
+                </>
+              );
+            })()}
           </article>
         ))}
 
@@ -149,6 +160,10 @@ const AgentAnalyticsTable = ({
                   selectedAgentId === row.agentId ? 'bg-indigo-50/60' : ''
                 }`}
               >
+                {(() => {
+                  const isStale = isLastActivityStale(row.lastActivity);
+                  return (
+                    <>
                 <td className="px-4 py-4">
                   <div className="flex items-center gap-3">
                     {row.profilePhoto ? (
@@ -179,7 +194,13 @@ const AgentAnalyticsTable = ({
                 <td className="px-4 py-4 text-center text-slate-900">{formatMetricValue(row.overduePipelineCount)}</td>
                 <td className="px-4 py-4 text-center text-slate-900">{formatMetricValue(row.pendingLeads)}</td>
                 <td className="px-4 py-4 text-center text-slate-900">{formatMetricValue(row.totalAssignedLeads)}</td>
-                <td className="px-4 py-4 text-slate-500">{formatLastActivity(row.lastActivity)}</td>
+                <td className="px-4 py-4">
+                  <div className="flex items-center gap-2">
+                    <span className={`h-2.5 w-2.5 rounded-full ${isStale ? 'bg-rose-500' : 'bg-emerald-500'}`} />
+                    <span className={isStale ? 'font-medium text-rose-700' : 'text-slate-500'}>{formatLastActivity(row.lastActivity)}</span>
+                  </div>
+                  {isStale && <div className="mt-1 text-[11px] font-semibold text-rose-600">No change in 1 hour</div>}
+                </td>
                 <td className="px-4 py-4 text-right">
                   <div className="flex justify-end gap-2">
                     <button
@@ -206,6 +227,9 @@ const AgentAnalyticsTable = ({
                     )}
                   </div>
                 </td>
+                    </>
+                  );
+                })()}
               </tr>
             ))}
 

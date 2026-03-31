@@ -191,7 +191,66 @@ const AgentBatchPage = () => {
   const contactHeader = assignments[0]?.lead?.contactColumn || 'Contact';
   const visibleReadOnlyHeaders = readOnlyHeaders.filter((header) => header !== contactHeader);
   const filteredAssignments = useMemo(() => {
-    const sortedEntries = [...assignments].sort((left, right) => {
+    const matchesFilterValue = (sourceValue, filterValue) =>
+      String(sourceValue || '').toLowerCase().includes(String(filterValue || '').trim().toLowerCase());
+
+    const filteredEntries = isManagedView
+      ? assignments.filter((assignment) => {
+          const lead = assignment.lead || {};
+          const rawData = lead.rawData || {};
+
+          if (columnFilters.contact && !matchesFilterValue(rawData[contactHeader] || lead.contactNumber, columnFilters.contact)) {
+            return false;
+          }
+
+          if (columnFilters.product && !matchesFilterValue(assignment.product, columnFilters.product)) {
+            return false;
+          }
+
+          if (
+            columnFilters.contactabilityStatus &&
+            String(assignment.contactabilityStatus || '') !== String(columnFilters.contactabilityStatus || '')
+          ) {
+            return false;
+          }
+
+          if (
+            columnFilters.callingRemark &&
+            String(assignment.callingRemark || '') !== String(columnFilters.callingRemark || '')
+          ) {
+            return false;
+          }
+
+          if (
+            columnFilters.interestedRemark &&
+            String(assignment.interestedRemark || '') !== String(columnFilters.interestedRemark || '')
+          ) {
+            return false;
+          }
+
+          if (
+            columnFilters.notInterestedRemark &&
+            String(assignment.notInterestedRemark || '') !== String(columnFilters.notInterestedRemark || '')
+          ) {
+            return false;
+          }
+
+          if (columnFilters.status && String(assignment.status || '') !== String(columnFilters.status || '')) {
+            return false;
+          }
+
+          for (const header of visibleReadOnlyHeaders) {
+            const rawFilterKey = `raw:${header}`;
+            if (columnFilters[rawFilterKey] && !matchesFilterValue(rawData[header], columnFilters[rawFilterKey])) {
+              return false;
+            }
+          }
+
+          return true;
+        })
+      : assignments;
+
+    const sortedEntries = [...filteredEntries].sort((left, right) => {
       const leftLead = left.lead || {};
       const rightLead = right.lead || {};
 
@@ -218,7 +277,7 @@ const AgentBatchPage = () => {
     });
 
     return sortedEntries;
-  }, [assignments, contactHeader, sortConfig, visibleReadOnlyHeaders]);
+  }, [assignments, columnFilters, contactHeader, isManagedView, sortConfig, visibleReadOnlyHeaders]);
   const batchStats = useMemo(() => {
     const countMatches = (matcher) => filteredAssignments.filter(matcher).length;
     const isNotDialed = (assignment) =>

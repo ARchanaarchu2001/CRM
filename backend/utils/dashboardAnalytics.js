@@ -210,6 +210,7 @@ const buildAgentBase = (agent) => ({
   email: agent.email,
   profilePhoto: agent.profilePhoto || null,
   isActive: agent.isActive !== false,
+  isOnline: false,
   assignedTeam: agent.assignedTeam || agent.team?.name || '',
   teamName: agent.assignedTeam || agent.team?.name || 'Unassigned Team',
   teamId: agent.team?._id ? String(agent.team._id) : '',
@@ -231,7 +232,10 @@ const updateLastActivity = (metricRow, dateValue) => {
   if (!parsed) return;
 
   if (!metricRow.lastActivity || parsed > new Date(metricRow.lastActivity)) {
-    metricRow.lastActivity = parsed.toISOString();
+    metricRow.lastActivity =
+      typeof dateValue === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateValue)
+        ? dateValue
+        : parsed.toISOString();
   }
 };
 
@@ -254,7 +258,7 @@ const sortAgentsByMetric = (rows, primaryMetric) =>
     return (right.dials || 0) - (left.dials || 0);
   });
 
-export const buildDashboardAnalytics = ({ agents, assignments, rangeInfo, includeTeamComparison = false }) => {
+export const buildDashboardAnalytics = ({ agents, assignments, rangeInfo, includeTeamComparison = false, onlineUserIds = new Set() }) => {
   const kpiTitles = getDynamicKpiTitles(rangeInfo);
   const summary = {
     dials: 0,
@@ -265,7 +269,13 @@ export const buildDashboardAnalytics = ({ agents, assignments, rangeInfo, includ
     pendingLeads: 0,
   };
 
-  const agentMap = new Map(agents.map((agent) => [String(agent._id), buildAgentBase(agent)]));
+  const agentMap = new Map(
+    agents.map((agent) => {
+      const metricRow = buildAgentBase(agent);
+      metricRow.isOnline = onlineUserIds.has(String(agent._id));
+      return [String(agent._id), metricRow];
+    })
+  );
   const trend = buildTrendSeries(rangeInfo);
   const trendMap = new Map(trend.map((bucket) => [bucket.date, bucket]));
   const productPerformance = buildProductMetricTemplate();
@@ -298,7 +308,7 @@ export const buildDashboardAnalytics = ({ agents, assignments, rangeInfo, includ
         dayBucket.dials += 1;
       }
 
-      updateLastActivity(agentMetrics, workedDate);
+      updateLastActivity(agentMetrics, assignment.updatedAt || workedDate);
     }
 
     const submissionDate = getSubmissionDate(assignment);
@@ -336,13 +346,13 @@ export const buildDashboardAnalytics = ({ agents, assignments, rangeInfo, includ
     if (isPipelineActiveAssignment(assignment)) {
       summary.pipelineCount += 1;
       agentMetrics.pipelineCount += 1;
-      updateLastActivity(agentMetrics, assignment.pipelineFollowUpDate || assignment.updatedAt);
+      updateLastActivity(agentMetrics, assignment.updatedAt || assignment.pipelineFollowUpDate);
     }
 
     if (isOverduePipelineAssignment(assignment, rangeInfo)) {
       summary.overduePipelineCount += 1;
       agentMetrics.overduePipelineCount += 1;
-      updateLastActivity(agentMetrics, assignment.pipelineFollowUpDate);
+      updateLastActivity(agentMetrics, assignment.updatedAt || assignment.pipelineFollowUpDate);
     }
 
     if (isPendingAssignmentInRange(assignment, rangeInfo)) {
@@ -423,6 +433,7 @@ export const buildDashboardAnalytics = ({ agents, assignments, rangeInfo, includ
     filter: {
       ...rangeInfo,
     },
+    onlineAgentCount: agentTable.filter((agent) => agent.isOnline).length,
     kpiTitles,
     kpis,
     summary,

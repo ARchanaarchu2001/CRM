@@ -1,6 +1,19 @@
 import { Server } from 'socket.io';
 
 let io;
+const socketPresence = new Map();
+
+export const getOnlineUserIds = () => {
+  const userIds = new Set();
+
+  socketPresence.forEach((presence) => {
+    if (presence?.userId) {
+      userIds.add(String(presence.userId));
+    }
+  });
+
+  return userIds;
+};
 
 export const initSocket = (server) => {
   io = new Server(server, {
@@ -12,8 +25,20 @@ export const initSocket = (server) => {
   });
 
   io.on('connection', (socket) => {
-    // We can emit live data here, or join specific rooms. 
-    // For admin analytics, a simple global broadcast handles agent metrics perfectly.
+    socket.on('presence:register', (payload = {}) => {
+      if (!payload.userId) {
+        return;
+      }
+
+      socketPresence.set(socket.id, {
+        userId: String(payload.userId),
+        role: payload.role || '',
+      });
+    });
+
+    socket.on('disconnect', () => {
+      socketPresence.delete(socket.id);
+    });
   });
 
   return io;

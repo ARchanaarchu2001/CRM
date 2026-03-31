@@ -194,11 +194,11 @@ const TeamLeadDash = () => {
                   Showing analytics for {getFilterBadgeLabel(dashboard?.filter)} across your managed agents.
                 </p>
               </div>
-              <span className="rounded-full bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700">
-                {dashboard?.agentTable?.length || 0} active agents
-              </span>
+                <span className="rounded-full bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700">
+                  {dashboard?.onlineAgentCount || 0} agents online
+                </span>
+              </div>
             </div>
-          </div>
 
           <KpiCardGrid kpis={dashboard?.kpis || []} />
 

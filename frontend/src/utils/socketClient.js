@@ -11,9 +11,32 @@ export const socket = io(SOCKET_URL, {
   withCredentials: true,
 });
 
+let registeredPresence = null;
+
+socket.on('connect', () => {
+  if (registeredPresence?.userId) {
+    socket.emit('presence:register', registeredPresence);
+  }
+});
+
 export const connectSocket = () => {
   if (!socket.connected) {
     socket.connect();
+  }
+};
+
+export const registerSocketPresence = (user) => {
+  if (!user?._id) {
+    return;
+  }
+
+  registeredPresence = {
+    userId: user._id,
+    role: user.role || '',
+  };
+
+  if (socket.connected) {
+    socket.emit('presence:register', registeredPresence);
   }
 };
 
