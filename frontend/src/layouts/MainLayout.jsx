@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo } from 'react';
-import { Link, Outlet, useNavigate } from 'react-router-dom';
+import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { logoutUser } from '../features/auth/authSlice.js';
 import { connectSocket, disconnectSocket, registerSocketPresence } from '../utils/socketClient.js';
@@ -7,6 +7,7 @@ import { connectSocket, disconnectSocket, registerSocketPresence } from '../util
 const MainLayout = () => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, role } = useSelector((state) => state.auth);
 
   useEffect(() => {
@@ -134,6 +135,11 @@ const firstName = getDisplayName();
     { to: '/admin-settings', label: 'Settings', show: ['super_admin'].includes(role) },
   ];
 
+  const isWideTablePage =
+    /\/agent-dash\/[^/]+$/.test(location.pathname) ||
+    /\/team-lead\/agents\/[^/]+\/batches\/[^/]+$/.test(location.pathname) ||
+    /\/analyst\/agents\/[^/]+\/batches\/[^/]+$/.test(location.pathname);
+
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col">
       <header className="border-b border-slate-200 bg-white">
@@ -180,7 +186,7 @@ const firstName = getDisplayName();
         </div>
       </header>
 
-      <main className="mx-auto flex-1 max-w-7xl w-full p-4 sm:p-6 lg:p-8">
+      <main className={`flex-1 w-full p-4 sm:p-6 lg:p-8 ${isWideTablePage ? 'max-w-none' : 'mx-auto max-w-7xl'}`}>
         <div className="min-h-full">
           <Outlet />
         </div>

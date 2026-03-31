@@ -58,6 +58,13 @@ const findDefaultNameColumn = (headers = []) =>
   '';
 
 const normalizeSortValue = (value) => String(value || '').toLowerCase();
+const STICKY_HEADER_CLASS =
+  'sticky left-0 z-30 border-r border-slate-200 bg-slate-100 px-3 py-3 text-left font-semibold text-slate-700 shadow-[6px_0_8px_-8px_rgba(15,23,42,0.28)]';
+const STICKY_FILTER_CLASS =
+  'sticky left-0 z-20 border-r border-slate-200 bg-white px-3 py-2 shadow-[6px_0_8px_-8px_rgba(15,23,42,0.18)]';
+const STICKY_CELL_CLASS =
+  'sticky left-0 z-20 border-r border-slate-200 bg-white shadow-[6px_0_8px_-8px_rgba(15,23,42,0.28)]';
+const DEFAULT_FIXED_COLUMN_KEY = 'contact';
 
 const AgentBatchPage = () => {
   const { batchId, agentId } = useParams();
@@ -74,8 +81,16 @@ const AgentBatchPage = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
+  const [fixedColumnKey, setFixedColumnKey] = useState(DEFAULT_FIXED_COLUMN_KEY);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+  const tableContainerRef = useRef(null);
   const timersRef = useRef(new Map());
   const serializedColumnFilters = JSON.stringify(columnFilters);
+  const fixedColumnStorageKey = useMemo(
+    () => `agent-batch-fixed-column:${isManagedView ? agentId || 'managed' : 'self'}:${batchId || 'default'}`,
+    [agentId, batchId, isManagedView]
+  );
 
   const loadBatches = async () => {
     if (isManagedView) {
@@ -190,6 +205,53 @@ const AgentBatchPage = () => {
 
   const contactHeader = assignments[0]?.lead?.contactColumn || 'Contact';
   const visibleReadOnlyHeaders = readOnlyHeaders.filter((header) => header !== contactHeader);
+  const fixedColumnOptions = useMemo(
+    () => [
+      { key: 'contact', label: contactHeader },
+      { key: 'product', label: 'Product' },
+      ...visibleReadOnlyHeaders.map((header) => ({
+        key: `raw:${header}`,
+        label: header,
+      })),
+      { key: 'contactabilityStatus', label: 'Contactability Status' },
+      { key: 'callingRemark', label: activeRemarkConfig.callingRemarkLabel },
+      { key: 'interestedRemark', label: activeRemarkConfig.interestedRemarkLabel },
+      { key: 'notInterestedRemark', label: activeRemarkConfig.notInterestedRemarkLabel },
+      { key: 'status', label: 'Status' },
+    ],
+    [
+      activeRemarkConfig.callingRemarkLabel,
+      activeRemarkConfig.interestedRemarkLabel,
+      activeRemarkConfig.notInterestedRemarkLabel,
+      contactHeader,
+      visibleReadOnlyHeaders,
+    ]
+  );
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const storedValue = window.localStorage.getItem(fixedColumnStorageKey);
+    setFixedColumnKey(storedValue || DEFAULT_FIXED_COLUMN_KEY);
+  }, [fixedColumnStorageKey]);
+
+  useEffect(() => {
+    const availableKeys = new Set(fixedColumnOptions.map((option) => option.key));
+
+    if (!availableKeys.has(fixedColumnKey)) {
+      setFixedColumnKey(DEFAULT_FIXED_COLUMN_KEY);
+    }
+  }, [fixedColumnKey, fixedColumnOptions]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    window.localStorage.setItem(fixedColumnStorageKey, fixedColumnKey);
+  }, [fixedColumnKey, fixedColumnStorageKey]);
   const filteredAssignments = useMemo(() => {
     const matchesFilterValue = (sourceValue, filterValue) =>
       String(sourceValue || '').toLowerCase().includes(String(filterValue || '').trim().toLowerCase());
@@ -299,6 +361,28 @@ const AgentBatchPage = () => {
       ),
     };
   }, [filteredAssignments]);
+
+  useEffect(() => {
+    const container = tableContainerRef.current;
+
+    if (!container) {
+      return undefined;
+    }
+
+    const updateScrollState = () => {
+      setCanScrollLeft(container.scrollLeft > 0);
+      setCanScrollRight(container.scrollLeft + container.clientWidth < container.scrollWidth - 1);
+    };
+
+    updateScrollState();
+    container.addEventListener('scroll', updateScrollState);
+    window.addEventListener('resize', updateScrollState);
+
+    return () => {
+      container.removeEventListener('scroll', updateScrollState);
+      window.removeEventListener('resize', updateScrollState);
+    };
+  }, [filteredAssignments, isManagedView]);
 
   const updateColumnFilter = (key, value) => {
     setColumnFilters((current) => ({
@@ -543,6 +627,27 @@ const AgentBatchPage = () => {
     );
   };
 
+  const scrollLeadSheet = (direction) => {
+    const container = tableContainerRef.current;
+
+    if (!container) {
+      return;
+    }
+
+    container.scrollBy({
+      left: direction === 'left' ? -420 : 420,
+      behavior: 'smooth',
+    });
+  };
+
+  const isFixedColumn = (columnKey) => fixedColumnKey === columnKey;
+  const getHeaderClassName = (columnKey) =>
+    isFixedColumn(columnKey) ? STICKY_HEADER_CLASS : 'px-3 py-3 text-left font-semibold text-slate-700';
+  const getFilterClassName = (columnKey) =>
+    isFixedColumn(columnKey) ? STICKY_FILTER_CLASS : 'px-3 py-2';
+  const getCellClassName = (columnKey, defaultClassName = 'px-3 py-2') =>
+    isFixedColumn(columnKey) ? `${STICKY_CELL_CLASS} ${defaultClassName}` : defaultClassName;
+
   return (
     <div className="space-y-6">
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -709,51 +814,88 @@ const AgentBatchPage = () => {
       )}
 
       <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="overflow-auto">
+        <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="text-sm font-medium text-slate-600">Lead sheet</div>
+            <label className="flex items-center gap-2 text-sm text-slate-600">
+              <span className="font-medium">Fixed column</span>
+              <select
+                value={fixedColumnKey}
+                onChange={(event) => setFixedColumnKey(event.target.value)}
+                className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700"
+              >
+                {fixedColumnOptions.map((option) => (
+                  <option key={option.key} value={option.key}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => scrollLeadSheet('left')}
+              disabled={!canScrollLeft}
+              className="rounded-full border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              ←
+            </button>
+            <button
+              type="button"
+              onClick={() => scrollLeadSheet('right')}
+              disabled={!canScrollRight}
+              className="rounded-full border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              →
+            </button>
+          </div>
+        </div>
+        <div ref={tableContainerRef} className="overflow-x-auto overflow-y-auto">
           <table className="min-w-[2200px] divide-y divide-slate-200 text-sm">
             <thead className="sticky top-0 z-10 bg-slate-100">
               <tr>
-                <th className="sticky left-0 z-30 border-r border-slate-200 bg-slate-100 px-3 py-3 text-left font-semibold text-slate-700 shadow-[6px_0_8px_-8px_rgba(15,23,42,0.28)]">
+                <th className={getHeaderClassName('contact')}>
                   <button type="button" onClick={() => toggleSort('contact')}>
                     {contactHeader}
                   </button>
                 </th>
-                <th className="px-3 py-3 text-left font-semibold text-slate-700">
+                <th className={getHeaderClassName('product')}>
                   <button type="button" onClick={() => toggleSort('product')}>
                     Product
                   </button>
                 </th>
                 {visibleReadOnlyHeaders.map((header) => (
-                  <th key={header} className="px-3 py-3 text-left font-semibold text-slate-700">
+                  <th key={header} className={getHeaderClassName(`raw:${header}`)}>
                     <button type="button" onClick={() => toggleSort(`raw:${header}`)}>
                       {header}
                     </button>
                   </th>
                 ))}
-                <th className="px-3 py-3 text-left font-semibold text-slate-700">
+                <th className={getHeaderClassName('contactabilityStatus')}>
                   <button type="button" onClick={() => toggleSort('contactabilityStatus')}>
                     Contactability Status
                   </button>
                 </th>
                 <th className="px-3 py-3 text-left font-semibold text-slate-700">{activeRemarkConfig.callAttempt1Label}</th>
                 <th className="px-3 py-3 text-left font-semibold text-slate-700">{activeRemarkConfig.callAttempt2Label}</th>
-                <th className="px-3 py-3 text-left font-semibold text-slate-700">
+                <th className={getHeaderClassName('callingRemark')}>
                   <button type="button" onClick={() => toggleSort('callingRemark')}>
                     {activeRemarkConfig.callingRemarkLabel}
                   </button>
                 </th>
-                <th className="px-3 py-3 text-left font-semibold text-slate-700">
+                <th className={getHeaderClassName('interestedRemark')}>
                   <button type="button" onClick={() => toggleSort('interestedRemark')}>
                     {activeRemarkConfig.interestedRemarkLabel}
                   </button>
                 </th>
-                <th className="px-3 py-3 text-left font-semibold text-slate-700">
+                <th className={getHeaderClassName('notInterestedRemark')}>
                   <button type="button" onClick={() => toggleSort('notInterestedRemark')}>
                     {activeRemarkConfig.notInterestedRemarkLabel}
                   </button>
                 </th>
                 <th className="px-3 py-3 text-left font-semibold text-slate-700">Agent Notes</th>
-                <th className="px-3 py-3 text-left font-semibold text-slate-700">
+                <th className={getHeaderClassName('status')}>
                   <button type="button" onClick={() => toggleSort('status')}>
                     Status
                   </button>
@@ -762,7 +904,7 @@ const AgentBatchPage = () => {
                 <th className="px-3 py-3 text-left font-semibold text-slate-700">Save State</th>
               </tr>
               <tr className="bg-white">
-                <th className="sticky left-0 z-20 border-r border-slate-200 bg-white px-3 py-2 shadow-[6px_0_8px_-8px_rgba(15,23,42,0.18)]">
+                <th className={getFilterClassName('contact')}>
                   <input
                     type="text"
                     value={columnFilters.contact || ''}
@@ -771,7 +913,7 @@ const AgentBatchPage = () => {
                     className="w-[140px] rounded-lg border border-slate-300 px-2 py-1"
                   />
                 </th>
-                <th className="px-3 py-2">
+                <th className={getFilterClassName('product')}>
                   <input
                     type="text"
                     value={columnFilters.product || ''}
@@ -781,7 +923,7 @@ const AgentBatchPage = () => {
                   />
                 </th>
                 {visibleReadOnlyHeaders.map((header) => (
-                  <th key={`${header}-filter`} className="px-3 py-2">
+                  <th key={`${header}-filter`} className={getFilterClassName(`raw:${header}`)}>
                     <input
                       type="text"
                       value={columnFilters[`raw:${header}`] || ''}
@@ -791,7 +933,7 @@ const AgentBatchPage = () => {
                     />
                   </th>
                 ))}
-                <th className="px-3 py-2">
+                <th className={getFilterClassName('contactabilityStatus')}>
                   <select
                     value={columnFilters.contactabilityStatus || ''}
                     onChange={(event) => updateColumnFilter('contactabilityStatus', event.target.value)}
@@ -807,7 +949,7 @@ const AgentBatchPage = () => {
                 </th>
                 <th className="px-3 py-2" />
                 <th className="px-3 py-2" />
-                <th className="px-3 py-2">
+                <th className={getFilterClassName('callingRemark')}>
                   <select
                     value={columnFilters.callingRemark || ''}
                     onChange={(event) => updateColumnFilter('callingRemark', event.target.value)}
@@ -821,7 +963,7 @@ const AgentBatchPage = () => {
                     ))}
                   </select>
                 </th>
-                <th className="px-3 py-2">
+                <th className={getFilterClassName('interestedRemark')}>
                   <select
                     value={columnFilters.interestedRemark || ''}
                     onChange={(event) => updateColumnFilter('interestedRemark', event.target.value)}
@@ -835,7 +977,7 @@ const AgentBatchPage = () => {
                     ))}
                   </select>
                 </th>
-                <th className="px-3 py-2">
+                <th className={getFilterClassName('notInterestedRemark')}>
                   <select
                     value={columnFilters.notInterestedRemark || ''}
                     onChange={(event) => updateColumnFilter('notInterestedRemark', event.target.value)}
@@ -850,7 +992,7 @@ const AgentBatchPage = () => {
                   </select>
                 </th>
                 <th className="px-3 py-2" />
-                <th className="px-3 py-2">
+                <th className={getFilterClassName('status')}>
                   <select
                     value={columnFilters.status || ''}
                     onChange={(event) => updateColumnFilter('status', event.target.value)}
@@ -872,7 +1014,7 @@ const AgentBatchPage = () => {
 
                 return (
                   <tr key={assignment._id}>
-                    <td className="sticky left-0 z-20 border-r border-slate-200 bg-white px-3 py-2 font-medium text-slate-900 shadow-[6px_0_8px_-8px_rgba(15,23,42,0.28)]">
+                    <td className={getCellClassName('contact', 'px-3 py-2 font-medium text-slate-900')}>
                       <button
                         type="button"
                         onClick={() => handleCopyContact(lead.rawData?.[contactHeader] || lead.contactNumber)}
@@ -885,13 +1027,18 @@ const AgentBatchPage = () => {
                           : ''}
                       </button>
                     </td>
-                    <td className="px-3 py-2 text-slate-700">{assignment.product?.toUpperCase() || '—'}</td>
+                    <td className={getCellClassName('product', 'px-3 py-2 text-slate-700')}>
+                      {assignment.product?.toUpperCase() || '-'}
+                    </td>
                     {visibleReadOnlyHeaders.map((header) => (
-                      <td key={`${assignment._id}-${header}`} className="px-3 py-2 text-slate-600">
-                        {lead.rawData?.[header] || '—'}
+                      <td
+                        key={`${assignment._id}-${header}`}
+                        className={getCellClassName(`raw:${header}`, 'px-3 py-2 text-slate-600')}
+                      >
+                        {lead.rawData?.[header] || '-'}
                       </td>
                     ))}
-                    <td className="px-3 py-2">
+                    <td className={getCellClassName('contactabilityStatus')}>
                       {isManagedView ? (
                         renderManagedFieldHistory(
                           assignment,
@@ -955,7 +1102,7 @@ const AgentBatchPage = () => {
                         </div>
                       )}
                     </td>
-                    <td className="px-3 py-2">
+                    <td className={getCellClassName('callingRemark')}>
                       {isManagedView ? (
                         renderManagedFieldHistory(assignment, 'callingRemark', assignment.callingRemark)
                       ) : (
@@ -973,7 +1120,7 @@ const AgentBatchPage = () => {
                         </select>
                       )}
                     </td>
-                    <td className="px-3 py-2">
+                    <td className={getCellClassName('interestedRemark')}>
                       {isManagedView ? (
                         renderManagedFieldHistory(assignment, 'interestedRemark', assignment.interestedRemark)
                       ) : (
@@ -991,7 +1138,7 @@ const AgentBatchPage = () => {
                         </select>
                       )}
                     </td>
-                    <td className="px-3 py-2">
+                    <td className={getCellClassName('notInterestedRemark')}>
                       {isManagedView ? (
                         renderManagedFieldHistory(assignment, 'notInterestedRemark', assignment.notInterestedRemark)
                       ) : (
@@ -1023,7 +1170,7 @@ const AgentBatchPage = () => {
                         />
                       )}
                     </td>
-                    <td className="px-3 py-2">
+                    <td className={getCellClassName('status')}>
                       {isManagedView ? (
                         renderManagedFieldHistory(assignment, 'status', assignment.status)
                       ) : (
