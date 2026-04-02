@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { FiEye, FiEyeOff } from 'react-icons/fi';
 
 const EditUserProfileModal = ({
   isOpen,
@@ -10,7 +11,11 @@ const EditUserProfileModal = ({
   const [formData, setFormData] = useState({
     fullName: '',
     email: '',
+    password: '',
   });
+  const [profilePhotoFile, setProfilePhotoFile] = useState(null);
+  const [photoPreview, setPhotoPreview] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
 
   useEffect(() => {
     if (!isOpen || !user) {
@@ -20,7 +25,11 @@ const EditUserProfileModal = ({
     setFormData({
       fullName: user.fullName || '',
       email: user.email || '',
+      password: '',
     });
+    setProfilePhotoFile(null);
+    setPhotoPreview(user.profilePhoto ? `/uploads/${user.profilePhoto}` : '');
+    setShowPassword(false);
   }, [isOpen, user]);
 
   if (!isOpen || !user) {
@@ -32,11 +41,24 @@ const EditUserProfileModal = ({
     setFormData((current) => ({ ...current, [name]: value }));
   };
 
+  const handleFileChange = (event) => {
+    const file = event.target.files?.[0];
+
+    if (!file) {
+      return;
+    }
+
+    setProfilePhotoFile(file);
+    setPhotoPreview(URL.createObjectURL(file));
+  };
+
   const handleSubmit = (event) => {
     event.preventDefault();
     onSubmit?.({
       fullName: formData.fullName.trim(),
       email: formData.email.trim(),
+      password: formData.password.trim(),
+      profilePhotoFile,
     });
   };
 
@@ -84,6 +106,56 @@ const EditUserProfileModal = ({
               />
             </label>
           </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="flex flex-col gap-1 text-sm text-slate-700">
+              <span className="font-medium">Password</span>
+              <div className="relative">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  name="password"
+                  value={formData.password}
+                  onChange={handleChange}
+                  minLength={6}
+                  placeholder="Leave blank to keep the current password"
+                  className="w-full rounded-xl border border-slate-300 px-4 py-2.5 pr-12 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((current) => !current)}
+                  className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 transition-colors hover:text-slate-600"
+                >
+                  {showPassword ? <FiEyeOff size={18} /> : <FiEye size={18} />}
+                </button>
+              </div>
+              <span className="text-xs text-slate-500">Enter a new password only when you want to update it.</span>
+            </label>
+
+            <label className="flex flex-col gap-1 text-sm text-slate-700">
+              <span className="font-medium">Profile Photo</span>
+              <input
+                type="file"
+                accept=".jpg,.jpeg,.png,.webp"
+                onChange={handleFileChange}
+                className="rounded-xl border border-slate-300 px-4 py-2.5 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100 file:mr-4 file:rounded-full file:border-0 file:bg-indigo-50 file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-indigo-700"
+              />
+              <span className="text-xs text-slate-500">Uploading a photo is optional.</span>
+            </label>
+          </div>
+
+          {photoPreview && (
+            <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+              <img
+                src={photoPreview}
+                alt={formData.fullName || user.fullName || 'Profile preview'}
+                className="h-14 w-14 rounded-full border border-slate-200 object-cover"
+              />
+              <div className="text-sm text-slate-600">
+                <p className="font-medium text-slate-900">Profile photo preview</p>
+                <p>{profilePhotoFile ? profilePhotoFile.name : 'Current photo'}</p>
+              </div>
+            </div>
+          )}
 
           <div className="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-600">
             Role: <span className="font-semibold text-slate-900">{user.role}</span>

@@ -19,3 +19,8 @@ export const refreshTokenAPI = async () => {
   const response = await axiosPublic.post('/auth/refresh-token');
   return response.data;
 };
+
+export const changePasswordAPI = async (payload) => {
+  const response = await axiosPrivate.put('/auth/change-password', payload);
+  return response.data;
+};

@@ -208,6 +208,7 @@ const buildAgentBase = (agent) => ({
   agentId: String(agent._id),
   agentName: agent.fullName,
   email: agent.email,
+  role: agent.role || 'agent',
   profilePhoto: agent.profilePhoto || null,
   isActive: agent.isActive !== false,
   isOnline: false,

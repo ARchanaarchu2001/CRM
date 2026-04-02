@@ -779,6 +779,10 @@ export const updateUser = asyncHandler(async (req, res) => {
     return res.status(403).json({ success: false, message: 'Forbidden' });
   }
 
+  if (req.file) {
+    req.body.profilePhoto = req.file.filename;
+  }
+
   req.body.updatedBy = req.user._id;
 
   // Handle password explicitly if they change it

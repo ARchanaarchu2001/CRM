@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import CreateUserForm from '../components/users/CreateUserForm.jsx';
 import EditUserProfileModal from '../components/dashboard/EditUserProfileModal.jsx';
 import MoveAgentToTeamModal from '../components/dashboard/MoveAgentToTeamModal.jsx';
+import UserAvatar from '../components/UserAvatar.jsx';
 import {
   deactivateDashboardUser,
   fetchAdminUsers,
@@ -160,7 +161,19 @@ const SuperAdminSettingsPage = () => {
     setBanner('');
 
     try {
-      await updateDashboardUser(editingUser._id, payload);
+      const submitData = new FormData();
+      submitData.append('fullName', payload.fullName);
+      submitData.append('email', payload.email);
+
+      if (payload.password) {
+        submitData.append('password', payload.password);
+      }
+
+      if (payload.profilePhotoFile) {
+        submitData.append('profilePhoto', payload.profilePhotoFile);
+      }
+
+      await updateDashboardUser(editingUser._id, submitData);
       setBanner(`${payload.fullName} was updated successfully.`);
       setEditingUser(null);
       await loadSettingsData();
@@ -253,13 +266,11 @@ const SuperAdminSettingsPage = () => {
                     <tr key={user._id} className="border-t border-slate-100">
                       <td className="px-4 py-4">
                         <div className="flex items-center gap-3">
-                          {user.profilePhoto ? (
-                            <img src={`/uploads/${user.profilePhoto}`} alt={user.fullName} className="h-10 w-10 rounded-full border border-slate-200 object-cover" />
-                          ) : (
-                            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 font-semibold text-slate-700">
-                              {user.fullName?.charAt(0)?.toUpperCase() || 'U'}
-                            </div>
-                          )}
+                          <UserAvatar
+                            src={user.profilePhoto}
+                            alt={user.fullName}
+                            className="h-10 w-10 rounded-full border border-slate-200 object-cover"
+                          />
                           <div>
                             <p className="font-semibold text-slate-900">{user.fullName}</p>
                             <p className="text-xs text-slate-500">{user.email}</p>

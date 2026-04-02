@@ -8,6 +8,7 @@ import AnalystAgentPerformancePage from './pages/AnalystAgentPerformancePage';
 import AnalystDatasetPage from './pages/AnalystDatasetPage';
 import AgentPipelinePage from './pages/AgentPipelinePage';
 import AgentQueuePage from './pages/AgentQueuePage';
+import AgentSettingsPage from './pages/AgentSettingsPage';
 import AgentPerformanceDetailPage from './pages/AgentPerformanceDetailPage';
 import DashboardHome from './pages/DashboardHome';
 import LeadSettingsPage from './pages/LeadSettingsPage';
@@ -92,6 +93,7 @@ function App() {
                 <Route path="/agent-dash/:batchId" element={<AgentBatchPage />} />
                 <Route path="/agent-pipeline" element={<AgentPipelinePage />} />
                 <Route path="/agent-queue/:queueType" element={<AgentQueuePage />} />
+                <Route path="/agent-settings" element={<AgentSettingsPage />} />
               </Route>
 
             </Route>

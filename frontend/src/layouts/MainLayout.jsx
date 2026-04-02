@@ -3,6 +3,7 @@ import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { logoutUser } from '../features/auth/authSlice.js';
 import { connectSocket, disconnectSocket, registerSocketPresence } from '../utils/socketClient.js';
+import UserAvatar from '../components/UserAvatar.jsx';
 
 const MainLayout = () => {
   const dispatch = useDispatch();
@@ -124,6 +125,7 @@ const firstName = getDisplayName();
     { to: '/lead-settings', label: 'Lead Settings', show: ['data_analyst'].includes(role) },
 
     { to: '/agent-pipeline', label: 'Pipeline', show: ['agent'].includes(role) },
+    { to: '/agent-settings', label: 'Settings', show: ['agent'].includes(role) },
 
     { to: '/manager-dash', label: 'Manager', show: ['manager'].includes(role) },
 
@@ -145,7 +147,13 @@ const firstName = getDisplayName();
       <header className="border-b border-slate-200 bg-white">
         <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-4 sm:px-6 lg:px-8">
           <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
+            <div className="flex items-center gap-4">
+              <UserAvatar
+                src={user?.profilePhoto}
+                alt={user?.fullName || 'User avatar'}
+                className="h-14 w-14 rounded-full border border-slate-200 object-cover shadow-sm"
+              />
+              <div>
               <div className="flex items-center gap-3 flex-wrap">
                 <h1 className="text-2xl font-bold text-slate-900">{welcomeContent.title}</h1>
                 {/* <span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700">
@@ -153,6 +161,7 @@ const firstName = getDisplayName();
                 </span> */}
               </div>
               <p className="mt-1 text-sm text-slate-500">{welcomeContent.subtitle}</p>
+              </div>
             </div>
 
             <div className="flex items-center space-x-4">

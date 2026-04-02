@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { assignLeads, fetchAnalystLeads, fetchLeadMetadata } from '../api/leads.js';
 import { formatContactDisplay } from '../utils/contactNumber.js';
@@ -35,6 +35,22 @@ const escapeCsvValue = (value) => {
   return stringValue;
 };
 
+const matchesLeadSearch = (lead, query) => {
+  const safeQuery = String(query || '').trim().toLowerCase();
+  if (!safeQuery) {
+    return false;
+  }
+
+  const valuesToSearch = [
+    lead.contactNumber,
+    lead.batchName,
+    lead.product,
+    ...Object.values(lead.rawData || {}),
+  ];
+
+  return valuesToSearch.some((value) => String(value || '').toLowerCase().includes(safeQuery));
+};
+
 const AnalystDatasetPage = () => {
   const { batchId } = useParams();
   const navigate = useNavigate();
@@ -67,6 +83,11 @@ const AnalystDatasetPage = () => {
   const [actionMessage, setActionMessage] = useState('');
   const [copiedContact, setCopiedContact] = useState('');
   const [isAssigning, setIsAssigning] = useState(false);
+  const [selectionAnchorQuery, setSelectionAnchorQuery] = useState('');
+  const [isSelectionProcessing, setIsSelectionProcessing] = useState(false);
+  const [highlightLeadId, setHighlightLeadId] = useState('');
+  const [customSelectCount, setCustomSelectCount] = useState('150');
+  const rowRefs = useRef({});
 
   const loadMetadata = async () => {
     const data = await fetchLeadMetadata();
@@ -76,7 +97,8 @@ const AnalystDatasetPage = () => {
     setAssignAgentId((current) => current || data.agents?.[0]?._id || '');
   };
 
-  const loadLeads = async (filters = leadFilters, page = currentPage) => {
+  const loadLeads = async (filters = leadFilters, page = currentPage, options = {}) => {
+    const { preserveSelection = false } = options;
     const response = await fetchAnalystLeads({
       importBatchId: batchId,
       ...filters,
@@ -87,8 +109,10 @@ const AnalystDatasetPage = () => {
     setTotalCount(response.totalCount || 0);
     setCurrentPage(response.page || 1);
     setTotalPages(response.totalPages || 1);
-    setSelectedLeadIds([]);
-    setLastSelectedIndex(null);
+    if (!preserveSelection) {
+      setSelectedLeadIds([]);
+      setLastSelectedIndex(null);
+    }
   };
 
   useEffect(() => {
@@ -112,7 +136,7 @@ const AnalystDatasetPage = () => {
     loadLeads({
       ...leadFilters,
       assignmentStatus: nextAssignmentStatus,
-    }, 1);
+    }, 1, { preserveSelection: false });
   }, [requestedView]);
 
   useEffect(() => {
@@ -120,6 +144,25 @@ const AnalystDatasetPage = () => {
     window.addEventListener('mouseup', stopDragSelection);
     return () => window.removeEventListener('mouseup', stopDragSelection);
   }, []);
+
+  useEffect(() => {
+    if (!highlightLeadId) {
+      return;
+    }
+
+    const rowElement = rowRefs.current[highlightLeadId];
+    if (!rowElement) {
+      return;
+    }
+
+    window.requestAnimationFrame(() => {
+      rowElement.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+        inline: 'nearest',
+      });
+    });
+  }, [highlightLeadId, leads]);
 
   const batchHeaders = useMemo(() => {
     const keys = new Set();
@@ -156,6 +199,30 @@ const AnalystDatasetPage = () => {
       `${agent.fullName || ''} ${agent.email || ''}`.toLowerCase().includes(safeSearch)
     );
   }, [agentSearch, agents]);
+
+  const collectFilteredLeadRows = async () => {
+    const pageSize = 200;
+    const baseParams = {
+      importBatchId: batchId,
+      ...leadFilters,
+      page: 1,
+      pageSize,
+    };
+
+    const firstResponse = await fetchAnalystLeads(baseParams);
+    const allLeads = [...(firstResponse.leads || [])];
+    const totalPagesToFetch = firstResponse.totalPages || 1;
+
+    for (let page = 2; page <= totalPagesToFetch; page += 1) {
+      const response = await fetchAnalystLeads({
+        ...baseParams,
+        page,
+      });
+      allLeads.push(...(response.leads || []));
+    }
+
+    return allLeads;
+  };
 
   const exportRows = useMemo(() => {
     if (leadFilters.assignmentStatus === 'assigned') {
@@ -284,7 +351,7 @@ const AnalystDatasetPage = () => {
       }
       setSelectedLeadIds([]);
       setLastSelectedIndex(null);
-      await loadLeads(leadFilters, currentPage);
+      await loadLeads(leadFilters, currentPage, { preserveSelection: false });
     } catch (error) {
       setActionMessage(error.response?.data?.message || 'Could not assign leads');
     } finally {
@@ -296,7 +363,91 @@ const AnalystDatasetPage = () => {
     if (nextPage < 1 || nextPage > totalPages || nextPage === currentPage) {
       return;
     }
-    await loadLeads(leadFilters, nextPage);
+    await loadLeads(leadFilters, nextPage, { preserveSelection: true });
+  };
+
+  const handleSelectFirst = async (count) => {
+    setIsSelectionProcessing(true);
+    setActionMessage('');
+
+    try {
+      const allLeads = await collectFilteredLeadRows();
+      const nextIds = allLeads.slice(0, count).map((lead) => lead._id);
+      setSelectedLeadIds(nextIds);
+      setLastSelectedIndex(null);
+      setActionMessage(`Selected first ${Math.min(count, nextIds.length)} lead${Math.min(count, nextIds.length) === 1 ? '' : 's'}.`);
+    } catch (error) {
+      setActionMessage(error.response?.data?.message || 'Could not select the requested rows.');
+    } finally {
+      setIsSelectionProcessing(false);
+    }
+  };
+
+  const handleCustomSelectFirst = async () => {
+    const parsedCount = Number.parseInt(customSelectCount, 10);
+    if (!Number.isFinite(parsedCount) || parsedCount <= 0) {
+      setActionMessage('Enter a valid custom count greater than 0.');
+      return;
+    }
+
+    await handleSelectFirst(parsedCount);
+  };
+
+  const handleClearSelection = () => {
+    setSelectedLeadIds([]);
+    setLastSelectedIndex(null);
+    setHighlightLeadId('');
+    setActionMessage('Selection cleared.');
+  };
+
+  const handleFindAndSelectFromRow = async (mode = 'jump', count = 0) => {
+    const safeQuery = selectionAnchorQuery.trim();
+    if (!safeQuery) {
+      setActionMessage('Enter a name, number, or other field value to find a row.');
+      return;
+    }
+
+    setIsSelectionProcessing(true);
+    setActionMessage('');
+
+    try {
+      const allLeads = await collectFilteredLeadRows();
+      const matchIndex = allLeads.findIndex((lead) => matchesLeadSearch(lead, safeQuery));
+
+      if (matchIndex === -1) {
+        setActionMessage(`Could not find a row matching "${safeQuery}".`);
+        return;
+      }
+
+      const matchedLead = allLeads[matchIndex];
+      const targetPage = Math.floor(matchIndex / PAGE_SIZE) + 1;
+
+      await loadLeads(leadFilters, targetPage, { preserveSelection: true });
+      setHighlightLeadId(String(matchedLead._id));
+
+      if (mode === 'jump') {
+        setActionMessage(`Found "${safeQuery}" on page ${targetPage}.`);
+        return;
+      }
+
+      const selectedSlice =
+        mode === 'to_end'
+          ? allLeads.slice(matchIndex)
+          : allLeads.slice(matchIndex, matchIndex + count);
+
+      const selectedIds = selectedSlice.map((lead) => lead._id);
+      setSelectedLeadIds((current) => Array.from(new Set([...current, ...selectedIds])));
+      setLastSelectedIndex(null);
+      setActionMessage(
+        mode === 'to_end'
+          ? `Selected ${selectedIds.length} lead${selectedIds.length === 1 ? '' : 's'} from "${safeQuery}" to the end.`
+          : `Selected ${selectedIds.length} lead${selectedIds.length === 1 ? '' : 's'} starting from "${safeQuery}".`
+      );
+    } catch (error) {
+      setActionMessage(error.response?.data?.message || 'Could not process that selection request.');
+    } finally {
+      setIsSelectionProcessing(false);
+    }
   };
 
   const handleCopyContact = async (value) => {
@@ -412,55 +563,170 @@ const AnalystDatasetPage = () => {
               Apply Filters
             </button>
           </form>
+        </div>
 
-          <div className="flex items-end gap-3">
-            <button
-              type="button"
-              onClick={handleExport}
-              className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-            >
-              Export View
-            </button>
-            <div className="rounded-2xl bg-slate-50 px-4 py-3 text-sm font-medium text-slate-700">
-              {selectedLeadIds.length} selected
+        <div className="mt-6 grid gap-4 xl:grid-cols-[1.2fr_1.35fr_1fr]">
+          <section className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Selection</p>
+                <h3 className="mt-1 text-lg font-semibold text-slate-900">Bulk Pick Controls</h3>
+              </div>
+              <div className="rounded-full bg-indigo-100 px-3 py-1 text-sm font-semibold text-indigo-700">
+                {selectedLeadIds.length} selected
+              </div>
             </div>
-            <div className="min-w-[280px] space-y-2">
-              <label className="block text-sm font-medium text-slate-700">
-                Search agent
+
+            <div className="mt-4 flex flex-wrap gap-2">
+              {[50, 100, 200].map((count) => (
+                <button
+                  key={count}
+                  type="button"
+                  onClick={() => handleSelectFirst(count)}
+                  disabled={isSelectionProcessing}
+                  className="rounded-xl border border-indigo-200 bg-white px-3 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-50 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  First {count}
+                </button>
+              ))}
+            </div>
+
+            <div className="mt-4 flex flex-wrap items-end gap-2">
+              <label className="min-w-[140px] flex-1 text-sm font-medium text-slate-700">
+                Custom count
                 <input
-                  type="text"
-                  value={agentSearch}
-                  onChange={(event) => setAgentSearch(event.target.value)}
-                  placeholder="Search by name or email"
-                  className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2"
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={customSelectCount}
+                  onChange={(event) => setCustomSelectCount(event.target.value)}
+                  className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2"
                 />
               </label>
-              <label className="block text-sm font-medium text-slate-700">
-                Assign to agent
-                <select
-                  value={assignAgentId}
-                  onChange={(event) => setAssignAgentId(event.target.value)}
-                  className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2"
-                >
-                  <option value="">Select agent</option>
-                  {filteredAgents.map((agent) => (
-                    <option key={agent._id} value={agent._id}>
-                      {agent.fullName} ({agent.email})
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <button
+                type="button"
+                onClick={handleCustomSelectFirst}
+                disabled={isSelectionProcessing}
+                className="rounded-xl border border-indigo-300 bg-white px-4 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Select Count
+              </button>
+              <button
+                type="button"
+                onClick={handleClearSelection}
+                className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+              >
+                Clear
+              </button>
+              <button
+                type="button"
+                onClick={handleExport}
+                className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+              >
+                Export View
+              </button>
             </div>
+          </section>
+
+          <section className="rounded-2xl border border-slate-200 bg-emerald-50/40 p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700">Find And Continue</p>
+            <h3 className="mt-1 text-lg font-semibold text-slate-900">Find Row By Any Field</h3>
+            <p className="mt-1 text-sm text-slate-600">
+              Search a person, number, or any field value. We will open the correct page and scroll to that row.
+            </p>
+
+            <label className="mt-4 block text-sm font-medium text-slate-700">
+              Find value
+              <input
+                type="text"
+                value={selectionAnchorQuery}
+                onChange={(event) => setSelectionAnchorQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault();
+                    handleFindAndSelectFromRow('jump');
+                  }
+                }}
+                placeholder="Search name, number, date, or any field"
+                className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2"
+              />
+            </label>
+
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => handleFindAndSelectFromRow('jump')}
+                disabled={isSelectionProcessing}
+                className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Find And Scroll
+              </button>
+              <button
+                type="button"
+                onClick={() => handleFindAndSelectFromRow('next', 50)}
+                disabled={isSelectionProcessing}
+                className="rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Next 50
+              </button>
+              <button
+                type="button"
+                onClick={() => handleFindAndSelectFromRow('next', 100)}
+                disabled={isSelectionProcessing}
+                className="rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Next 100
+              </button>
+              <button
+                type="button"
+                onClick={() => handleFindAndSelectFromRow('to_end')}
+                disabled={isSelectionProcessing}
+                className="rounded-xl border border-amber-200 bg-white px-3 py-2 text-sm font-medium text-amber-700 hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                To End
+              </button>
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-slate-200 bg-indigo-50/40 p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-indigo-700">Assign</p>
+            <h3 className="mt-1 text-lg font-semibold text-slate-900">Send Selected Leads</h3>
+
+            <label className="mt-4 block text-sm font-medium text-slate-700">
+              Search agent
+              <input
+                type="text"
+                value={agentSearch}
+                onChange={(event) => setAgentSearch(event.target.value)}
+                placeholder="Search by name or email"
+                className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2"
+              />
+            </label>
+            <label className="mt-3 block text-sm font-medium text-slate-700">
+              Assign to agent
+              <select
+                value={assignAgentId}
+                onChange={(event) => setAssignAgentId(event.target.value)}
+                className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2"
+              >
+                <option value="">Select agent</option>
+                {filteredAgents.map((agent) => (
+                  <option key={agent._id} value={agent._id}>
+                    {agent.fullName} ({agent.email})
+                  </option>
+                ))}
+              </select>
+            </label>
 
             <button
               type="button"
               onClick={handleAssign}
               disabled={isAssigning}
-              className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
+              className="mt-4 w-full rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {isAssigning ? 'Assigning...' : 'Assign Selected'}
             </button>
-          </div>
+          </section>
         </div>
 
         {actionMessage && <p className="mt-4 text-sm text-slate-600">{actionMessage}</p>}
@@ -494,6 +760,11 @@ const AnalystDatasetPage = () => {
       </section>
 
       <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="sticky top-4 z-20 flex justify-end border-b border-slate-200 bg-white/95 px-4 py-3 backdrop-blur">
+          <div className="rounded-full bg-indigo-100 px-3 py-1 text-sm font-semibold text-indigo-700 shadow-sm">
+            {selectedLeadIds.length} selected
+          </div>
+        </div>
         <div className="overflow-auto">
           <table className="min-w-[1400px] divide-y divide-slate-200 text-sm">
             <thead className="sticky top-0 z-10 bg-slate-100">
@@ -581,7 +852,17 @@ const AnalystDatasetPage = () => {
                     );
                   })
                 : leads.map((lead, index) => (
-                    <tr key={lead._id} className={getDuplicateRowClasses(lead.duplicateStatus)}>
+                    <tr
+                      key={lead._id}
+                      ref={(node) => {
+                        if (node) {
+                          rowRefs.current[String(lead._id)] = node;
+                        }
+                      }}
+                      className={`${getDuplicateRowClasses(lead.duplicateStatus)} ${
+                        String(lead._id) === String(highlightLeadId) ? 'bg-sky-50 ring-1 ring-sky-200' : ''
+                      }`}
+                    >
                       <td
                         className="sticky left-0 z-20 cursor-pointer border-r border-slate-200 bg-white px-3 py-2 shadow-[6px_0_8px_-8px_rgba(15,23,42,0.28)]"
                         onMouseDown={(event) => {

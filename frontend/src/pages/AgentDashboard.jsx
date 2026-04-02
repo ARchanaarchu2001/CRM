@@ -270,6 +270,21 @@ const AgentDashboard = () => {
             </div>
           </div>
 
+          <div className="mt-5 flex flex-wrap gap-3">
+            <Link
+              to="/agent-pipeline"
+              className="rounded-xl bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700"
+            >
+              Open Pipeline
+            </Link>
+            <Link
+              to="/agent-settings"
+              className="rounded-xl border border-indigo-300 px-4 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-50"
+            >
+              Settings
+            </Link>
+          </div>
+
           <div className="mt-5 grid gap-4 lg:grid-cols-3">
             {[
               { key: 'today', label: 'Today', tone: 'border-sky-200 bg-sky-50' },

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import CreateAgentForm from '../components/users/CreateAgentForm';
+import UserAvatar from '../components/UserAvatar.jsx';
 import {
   deactivateDashboardUser,
   fetchTeamLeadDashboard,
@@ -110,7 +111,19 @@ const TeamLeadSettingsPage = () => {
     setBanner('');
 
     try {
-      await updateDashboardUser(editingUser.agentId, payload);
+      const submitData = new FormData();
+      submitData.append('fullName', payload.fullName);
+      submitData.append('email', payload.email);
+
+      if (payload.password) {
+        submitData.append('password', payload.password);
+      }
+
+      if (payload.profilePhotoFile) {
+        submitData.append('profilePhoto', payload.profilePhotoFile);
+      }
+
+      await updateDashboardUser(editingUser.agentId, submitData);
       setBanner(`${payload.fullName || editingUser.agentName} was updated successfully.`);
       setEditingUser(null);
       await loadUsers();
@@ -176,13 +189,11 @@ const TeamLeadSettingsPage = () => {
                   <tr key={user.agentId} className="border-t border-slate-100">
                     <td className="px-4 py-4">
                       <div className="flex items-center gap-3">
-                        {user.profilePhoto ? (
-                          <img src={`/uploads/${user.profilePhoto}`} alt={user.agentName} className="h-10 w-10 rounded-full border border-slate-200 object-cover" />
-                        ) : (
-                          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 font-semibold text-slate-700">
-                            {user.agentName?.charAt(0)?.toUpperCase() || 'A'}
-                          </div>
-                        )}
+                        <UserAvatar
+                          src={user.profilePhoto}
+                          alt={user.agentName}
+                          className="h-10 w-10 rounded-full border border-slate-200 object-cover"
+                        />
                         <div>
                           <p className="font-semibold text-slate-900">{user.agentName}</p>
                           <p className="text-xs text-slate-500">{user.isActive ? 'Active' : 'Inactive'}</p>
@@ -236,7 +247,8 @@ const TeamLeadSettingsPage = () => {
           _id: editingUser.agentId,
           fullName: editingUser.agentName,
           email: editingUser.email,
-          role: editingUser.role,
+          role: editingUser.role || 'agent',
+          profilePhoto: editingUser.profilePhoto,
         } : null}
         isSubmitting={isEditSubmitting}
         onClose={handleCloseEditModal}
