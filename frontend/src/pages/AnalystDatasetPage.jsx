@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { assignLeads, fetchAnalystLeads, fetchLeadMetadata } from '../api/leads.js';
+import { assignLeads, fetchAnalystLeadSelection, fetchAnalystLeads, fetchLeadMetadata } from '../api/leads.js';
 import { formatContactDisplay } from '../utils/contactNumber.js';
 
 const getDuplicateRowClasses = (duplicateStatus) => {
@@ -25,7 +25,8 @@ const DEFAULT_REMARK_CONFIG = {
   notInterestedRemarkLabel: 'Not Interested Remarks',
 };
 
-const PAGE_SIZE = 100;
+const DEFAULT_PAGE_SIZE = 100;
+const MAX_PAGE_SIZE = 200;
 
 const escapeCsvValue = (value) => {
   const stringValue = String(value ?? '');
@@ -33,22 +34,6 @@ const escapeCsvValue = (value) => {
     return `"${stringValue.replace(/"/g, '""')}"`;
   }
   return stringValue;
-};
-
-const matchesLeadSearch = (lead, query) => {
-  const safeQuery = String(query || '').trim().toLowerCase();
-  if (!safeQuery) {
-    return false;
-  }
-
-  const valuesToSearch = [
-    lead.contactNumber,
-    lead.batchName,
-    lead.product,
-    ...Object.values(lead.rawData || {}),
-  ];
-
-  return valuesToSearch.some((value) => String(value || '').toLowerCase().includes(safeQuery));
 };
 
 const AnalystDatasetPage = () => {
@@ -76,6 +61,8 @@ const AnalystDatasetPage = () => {
   const [totalCount, setTotalCount] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [pageSizeInput, setPageSizeInput] = useState(String(DEFAULT_PAGE_SIZE));
   const [selectedLeadIds, setSelectedLeadIds] = useState([]);
   const [lastSelectedIndex, setLastSelectedIndex] = useState(null);
   const [isDragSelecting, setIsDragSelecting] = useState(false);
@@ -83,9 +70,7 @@ const AnalystDatasetPage = () => {
   const [actionMessage, setActionMessage] = useState('');
   const [copiedContact, setCopiedContact] = useState('');
   const [isAssigning, setIsAssigning] = useState(false);
-  const [selectionAnchorQuery, setSelectionAnchorQuery] = useState('');
   const [isSelectionProcessing, setIsSelectionProcessing] = useState(false);
-  const [highlightLeadId, setHighlightLeadId] = useState('');
   const [customSelectCount, setCustomSelectCount] = useState('150');
   const rowRefs = useRef({});
 
@@ -98,17 +83,19 @@ const AnalystDatasetPage = () => {
   };
 
   const loadLeads = async (filters = leadFilters, page = currentPage, options = {}) => {
-    const { preserveSelection = false } = options;
+    const { preserveSelection = false, requestedPageSize = pageSize } = options;
     const response = await fetchAnalystLeads({
       importBatchId: batchId,
       ...filters,
       page,
-      pageSize: PAGE_SIZE,
+      pageSize: requestedPageSize,
     });
     setLeads(response.leads || []);
     setTotalCount(response.totalCount || 0);
     setCurrentPage(response.page || 1);
     setTotalPages(response.totalPages || 1);
+    setPageSize(response.pageSize || requestedPageSize);
+    setPageSizeInput(String(response.pageSize || requestedPageSize));
     if (!preserveSelection) {
       setSelectedLeadIds([]);
       setLastSelectedIndex(null);
@@ -145,25 +132,6 @@ const AnalystDatasetPage = () => {
     return () => window.removeEventListener('mouseup', stopDragSelection);
   }, []);
 
-  useEffect(() => {
-    if (!highlightLeadId) {
-      return;
-    }
-
-    const rowElement = rowRefs.current[highlightLeadId];
-    if (!rowElement) {
-      return;
-    }
-
-    window.requestAnimationFrame(() => {
-      rowElement.scrollIntoView({
-        behavior: 'smooth',
-        block: 'center',
-        inline: 'nearest',
-      });
-    });
-  }, [highlightLeadId, leads]);
-
   const batchHeaders = useMemo(() => {
     const keys = new Set();
     leads.forEach((lead) => {
@@ -199,30 +167,6 @@ const AnalystDatasetPage = () => {
       `${agent.fullName || ''} ${agent.email || ''}`.toLowerCase().includes(safeSearch)
     );
   }, [agentSearch, agents]);
-
-  const collectFilteredLeadRows = async () => {
-    const pageSize = 200;
-    const baseParams = {
-      importBatchId: batchId,
-      ...leadFilters,
-      page: 1,
-      pageSize,
-    };
-
-    const firstResponse = await fetchAnalystLeads(baseParams);
-    const allLeads = [...(firstResponse.leads || [])];
-    const totalPagesToFetch = firstResponse.totalPages || 1;
-
-    for (let page = 2; page <= totalPagesToFetch; page += 1) {
-      const response = await fetchAnalystLeads({
-        ...baseParams,
-        page,
-      });
-      allLeads.push(...(response.leads || []));
-    }
-
-    return allLeads;
-  };
 
   const exportRows = useMemo(() => {
     if (leadFilters.assignmentStatus === 'assigned') {
@@ -366,13 +310,38 @@ const AnalystDatasetPage = () => {
     await loadLeads(leadFilters, nextPage, { preserveSelection: true });
   };
 
+  const handlePageSizeApply = async () => {
+    const parsedCount = Number.parseInt(pageSizeInput, 10);
+
+    if (!Number.isFinite(parsedCount) || parsedCount <= 0) {
+      setActionMessage('Enter a valid row count greater than 0.');
+      return;
+    }
+
+    const safePageSize = Math.min(parsedCount, MAX_PAGE_SIZE);
+    if (safePageSize !== parsedCount) {
+      setActionMessage(`Row count is limited to ${MAX_PAGE_SIZE} per page.`);
+    } else {
+      setActionMessage('');
+    }
+
+    await loadLeads(leadFilters, 1, {
+      preserveSelection: false,
+      requestedPageSize: safePageSize,
+    });
+  };
+
   const handleSelectFirst = async (count) => {
     setIsSelectionProcessing(true);
     setActionMessage('');
 
     try {
-      const allLeads = await collectFilteredLeadRows();
-      const nextIds = allLeads.slice(0, count).map((lead) => lead._id);
+      const response = await fetchAnalystLeadSelection({
+        importBatchId: batchId,
+        ...leadFilters,
+        count,
+      });
+      const nextIds = response.leadIds || [];
       setSelectedLeadIds(nextIds);
       setLastSelectedIndex(null);
       setActionMessage(`Selected first ${Math.min(count, nextIds.length)} lead${Math.min(count, nextIds.length) === 1 ? '' : 's'}.`);
@@ -396,58 +365,7 @@ const AnalystDatasetPage = () => {
   const handleClearSelection = () => {
     setSelectedLeadIds([]);
     setLastSelectedIndex(null);
-    setHighlightLeadId('');
     setActionMessage('Selection cleared.');
-  };
-
-  const handleFindAndSelectFromRow = async (mode = 'jump', count = 0) => {
-    const safeQuery = selectionAnchorQuery.trim();
-    if (!safeQuery) {
-      setActionMessage('Enter a name, number, or other field value to find a row.');
-      return;
-    }
-
-    setIsSelectionProcessing(true);
-    setActionMessage('');
-
-    try {
-      const allLeads = await collectFilteredLeadRows();
-      const matchIndex = allLeads.findIndex((lead) => matchesLeadSearch(lead, safeQuery));
-
-      if (matchIndex === -1) {
-        setActionMessage(`Could not find a row matching "${safeQuery}".`);
-        return;
-      }
-
-      const matchedLead = allLeads[matchIndex];
-      const targetPage = Math.floor(matchIndex / PAGE_SIZE) + 1;
-
-      await loadLeads(leadFilters, targetPage, { preserveSelection: true });
-      setHighlightLeadId(String(matchedLead._id));
-
-      if (mode === 'jump') {
-        setActionMessage(`Found "${safeQuery}" on page ${targetPage}.`);
-        return;
-      }
-
-      const selectedSlice =
-        mode === 'to_end'
-          ? allLeads.slice(matchIndex)
-          : allLeads.slice(matchIndex, matchIndex + count);
-
-      const selectedIds = selectedSlice.map((lead) => lead._id);
-      setSelectedLeadIds((current) => Array.from(new Set([...current, ...selectedIds])));
-      setLastSelectedIndex(null);
-      setActionMessage(
-        mode === 'to_end'
-          ? `Selected ${selectedIds.length} lead${selectedIds.length === 1 ? '' : 's'} from "${safeQuery}" to the end.`
-          : `Selected ${selectedIds.length} lead${selectedIds.length === 1 ? '' : 's'} starting from "${safeQuery}".`
-      );
-    } catch (error) {
-      setActionMessage(error.response?.data?.message || 'Could not process that selection request.');
-    } finally {
-      setIsSelectionProcessing(false);
-    }
   };
 
   const handleCopyContact = async (value) => {
@@ -493,14 +411,14 @@ const AnalystDatasetPage = () => {
           </div>
         </div>
 
-        <div className="mt-5 flex flex-wrap items-end gap-4">
-          <form onSubmit={handleFilterSubmit} className="flex flex-1 flex-wrap items-end gap-3">
+        <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+          <form onSubmit={handleFilterSubmit} className="grid gap-4 lg:grid-cols-[auto_auto_minmax(0,1fr)_auto]">
             <label className="text-sm font-medium text-slate-700">
               Product
               <select
                 value={leadFilters.product}
                 onChange={(event) => setLeadFilters((current) => ({ ...current, product: event.target.value }))}
-                className="mt-1 rounded-xl border border-slate-300 px-3 py-2"
+                className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2"
               >
                 <option value="">All</option>
                 {products.map((product) => (
@@ -519,7 +437,7 @@ const AnalystDatasetPage = () => {
                   onChange={(event) =>
                     setLeadFilters((current) => ({ ...current, duplicateStatus: event.target.value }))
                   }
-                  className="mt-1 rounded-xl border border-slate-300 px-3 py-2"
+                  className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2"
                 >
                   <option value="">All</option>
                   <option value="unique">Unique only</option>
@@ -537,7 +455,7 @@ const AnalystDatasetPage = () => {
                 onChange={(event) =>
                   setLeadFilters((current) => ({ ...current, assignmentStatus: event.target.value }))
                 }
-                className="mt-1 rounded-xl border border-slate-300 px-3 py-2"
+                className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2"
               >
                 <option value="">All</option>
                 <option value="unassigned">Unassigned</option>
@@ -545,54 +463,68 @@ const AnalystDatasetPage = () => {
               </select>
             </label>
 
-            <label className="min-w-[220px] flex-1 text-sm font-medium text-slate-700">
+            <label className="min-w-[220px] text-sm font-medium text-slate-700">
               Search
               <input
                 type="text"
                 value={leadFilters.search}
                 onChange={(event) => setLeadFilters((current) => ({ ...current, search: event.target.value }))}
                 placeholder="Search any field in the row"
-                className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2"
+                className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2"
               />
             </label>
 
             <button
               type="submit"
-              className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
+              className="self-end rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-medium text-white hover:bg-slate-800"
             >
               Apply Filters
             </button>
           </form>
         </div>
 
-        <div className="mt-6 grid gap-4 xl:grid-cols-[1.2fr_1.35fr_1fr]">
-          <section className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
-            <div className="flex items-start justify-between gap-3">
+        <div className="mt-6 grid gap-4 xl:grid-cols-[1.2fr_1fr]">
+          <section className="rounded-2xl border border-slate-200 bg-white p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Selection</p>
-                <h3 className="mt-1 text-lg font-semibold text-slate-900">Bulk Pick Controls</h3>
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Selection</p>
+                <h3 className="mt-1 text-base font-semibold text-slate-900">Pick rows quickly</h3>
               </div>
-              <div className="rounded-full bg-indigo-100 px-3 py-1 text-sm font-semibold text-indigo-700">
+              <div className="rounded-full bg-indigo-100 px-4 py-2 text-sm font-semibold text-indigo-700">
                 {selectedLeadIds.length} selected
               </div>
             </div>
 
             <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={handleExport}
+                className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+              >
+                Export View
+              </button>
               {[50, 100, 200].map((count) => (
                 <button
                   key={count}
                   type="button"
                   onClick={() => handleSelectFirst(count)}
                   disabled={isSelectionProcessing}
-                  className="rounded-xl border border-indigo-200 bg-white px-3 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-50 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   First {count}
                 </button>
               ))}
+              <button
+                type="button"
+                onClick={handleClearSelection}
+                className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+              >
+                Clear
+              </button>
             </div>
 
-            <div className="mt-4 flex flex-wrap items-end gap-2">
-              <label className="min-w-[140px] flex-1 text-sm font-medium text-slate-700">
+            <div className="mt-4 flex flex-wrap items-end gap-3">
+              <label className="min-w-[180px] flex-1 text-sm font-medium text-slate-700">
                 Custom count
                 <input
                   type="number"
@@ -611,121 +543,50 @@ const AnalystDatasetPage = () => {
               >
                 Select Count
               </button>
-              <button
-                type="button"
-                onClick={handleClearSelection}
-                className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
-              >
-                Clear
-              </button>
-              <button
-                type="button"
-                onClick={handleExport}
-                className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
-              >
-                Export View
-              </button>
             </div>
           </section>
 
-          <section className="rounded-2xl border border-slate-200 bg-emerald-50/40 p-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700">Find And Continue</p>
-            <h3 className="mt-1 text-lg font-semibold text-slate-900">Find Row By Any Field</h3>
-            <p className="mt-1 text-sm text-slate-600">
-              Search a person, number, or any field value. We will open the correct page and scroll to that row.
-            </p>
+          <section className="rounded-2xl border border-slate-200 bg-white p-4">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Assignment</p>
+              <h3 className="mt-1 text-base font-semibold text-slate-900">Send selected rows</h3>
+            </div>
 
-            <label className="mt-4 block text-sm font-medium text-slate-700">
-              Find value
-              <input
-                type="text"
-                value={selectionAnchorQuery}
-                onChange={(event) => setSelectionAnchorQuery(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') {
-                    event.preventDefault();
-                    handleFindAndSelectFromRow('jump');
-                  }
-                }}
-                placeholder="Search name, number, date, or any field"
-                className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2"
-              />
-            </label>
-
-            <div className="mt-4 flex flex-wrap gap-2">
+            <div className="mt-4 flex flex-wrap items-end gap-3">
+              <label className="min-w-[220px] flex-1 text-sm font-medium text-slate-700">
+                Search agent
+                <input
+                  type="text"
+                  value={agentSearch}
+                  onChange={(event) => setAgentSearch(event.target.value)}
+                  placeholder="Search by name or email"
+                  className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2"
+                />
+              </label>
+              <label className="min-w-[260px] flex-1 text-sm font-medium text-slate-700">
+                Assign to agent
+                <select
+                  value={assignAgentId}
+                  onChange={(event) => setAssignAgentId(event.target.value)}
+                  className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2"
+                >
+                  <option value="">Select agent</option>
+                  {filteredAgents.map((agent) => (
+                    <option key={agent._id} value={agent._id}>
+                      {agent.fullName} ({agent.email})
+                    </option>
+                  ))}
+                </select>
+              </label>
               <button
                 type="button"
-                onClick={() => handleFindAndSelectFromRow('jump')}
-                disabled={isSelectionProcessing}
-                className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                onClick={handleAssign}
+                disabled={isAssigning}
+                className="rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                Find And Scroll
-              </button>
-              <button
-                type="button"
-                onClick={() => handleFindAndSelectFromRow('next', 50)}
-                disabled={isSelectionProcessing}
-                className="rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                Next 50
-              </button>
-              <button
-                type="button"
-                onClick={() => handleFindAndSelectFromRow('next', 100)}
-                disabled={isSelectionProcessing}
-                className="rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                Next 100
-              </button>
-              <button
-                type="button"
-                onClick={() => handleFindAndSelectFromRow('to_end')}
-                disabled={isSelectionProcessing}
-                className="rounded-xl border border-amber-200 bg-white px-3 py-2 text-sm font-medium text-amber-700 hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                To End
+                {isAssigning ? 'Assigning...' : 'Assign Selected'}
               </button>
             </div>
-          </section>
-
-          <section className="rounded-2xl border border-slate-200 bg-indigo-50/40 p-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-indigo-700">Assign</p>
-            <h3 className="mt-1 text-lg font-semibold text-slate-900">Send Selected Leads</h3>
-
-            <label className="mt-4 block text-sm font-medium text-slate-700">
-              Search agent
-              <input
-                type="text"
-                value={agentSearch}
-                onChange={(event) => setAgentSearch(event.target.value)}
-                placeholder="Search by name or email"
-                className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2"
-              />
-            </label>
-            <label className="mt-3 block text-sm font-medium text-slate-700">
-              Assign to agent
-              <select
-                value={assignAgentId}
-                onChange={(event) => setAssignAgentId(event.target.value)}
-                className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2"
-              >
-                <option value="">Select agent</option>
-                {filteredAgents.map((agent) => (
-                  <option key={agent._id} value={agent._id}>
-                    {agent.fullName} ({agent.email})
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <button
-              type="button"
-              onClick={handleAssign}
-              disabled={isAssigning}
-              className="mt-4 w-full rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {isAssigning ? 'Assigning...' : 'Assign Selected'}
-            </button>
           </section>
         </div>
 
@@ -735,10 +596,29 @@ const AnalystDatasetPage = () => {
       <section className="rounded-2xl border border-slate-200 bg-white px-6 py-4 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-slate-600">
           <div>
-            Showing page <strong>{currentPage}</strong> of <strong>{totalPages}</strong> · {PAGE_SIZE} rows per page ·{' '}
+            Showing page <strong>{currentPage}</strong> of <strong>{totalPages}</strong> · {pageSize} rows per page ·{' '}
             <strong>{totalCount}</strong> total rows
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="text-sm font-medium text-slate-700">
+              Rows per page
+              <input
+                type="number"
+                min="1"
+                max={MAX_PAGE_SIZE}
+                step="1"
+                value={pageSizeInput}
+                onChange={(event) => setPageSizeInput(event.target.value)}
+                className="ml-2 w-24 rounded-xl border border-slate-300 px-3 py-2 text-sm"
+              />
+            </label>
+            <button
+              type="button"
+              onClick={handlePageSizeApply}
+              className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              Set Count
+            </button>
             <button
               type="button"
               onClick={() => handlePageChange(currentPage - 1)}
@@ -759,13 +639,13 @@ const AnalystDatasetPage = () => {
         </div>
       </section>
 
-      <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="sticky top-4 z-20 flex justify-end border-b border-slate-200 bg-white/95 px-4 py-3 backdrop-blur">
+      <section className="relative rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="pointer-events-none sticky top-4 z-20 flex justify-end px-4 pt-4">
           <div className="rounded-full bg-indigo-100 px-3 py-1 text-sm font-semibold text-indigo-700 shadow-sm">
             {selectedLeadIds.length} selected
           </div>
         </div>
-        <div className="overflow-auto">
+        <div className="overflow-auto pt-4">
           <table className="min-w-[1400px] divide-y divide-slate-200 text-sm">
             <thead className="sticky top-0 z-10 bg-slate-100">
               <tr>
@@ -859,9 +739,7 @@ const AnalystDatasetPage = () => {
                           rowRefs.current[String(lead._id)] = node;
                         }
                       }}
-                      className={`${getDuplicateRowClasses(lead.duplicateStatus)} ${
-                        String(lead._id) === String(highlightLeadId) ? 'bg-sky-50 ring-1 ring-sky-200' : ''
-                      }`}
+                      className={getDuplicateRowClasses(lead.duplicateStatus)}
                     >
                       <td
                         className="sticky left-0 z-20 cursor-pointer border-r border-slate-200 bg-white px-3 py-2 shadow-[6px_0_8px_-8px_rgba(15,23,42,0.28)]"

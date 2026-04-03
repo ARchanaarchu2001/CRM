@@ -102,7 +102,7 @@ router.get(
 
 router.put(
   '/:id',
-  authorizeRoles(ROLES.SUPER_ADMIN, ROLES.TEAM_LEAD),
+  authorizeRoles(ROLES.SUPER_ADMIN, ROLES.TEAM_LEAD, ROLES.AGENT),
   uploadProfilePhoto.single('profilePhoto'), // Keep to allow updating photo
   updateUser
 );

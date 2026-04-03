@@ -51,6 +51,47 @@ const DEFAULT_REMARKS = {
   notInterestedRemarks: ['Bad Experience'],
 };
 
+const buildAnalystLeadFilters = ({ product, duplicateStatus, assignmentStatus, batchName, importBatchId }) => {
+  const filters = {};
+
+  if (product) {
+    filters.product = String(product).toLowerCase();
+  }
+  if (batchName) {
+    filters.batchName = String(batchName).trim();
+  }
+  if (importBatchId) {
+    filters.importBatch = importBatchId;
+  }
+  if (duplicateStatus) {
+    filters.duplicateStatus = duplicateStatus;
+  }
+  if (assignmentStatus === 'unassigned') {
+    filters.assignedAgentCount = 0;
+  }
+  if (assignmentStatus === 'assigned') {
+    filters.assignedAgentCount = { $gt: 0 };
+  }
+
+  return filters;
+};
+
+const leadMatchesSearch = (lead, query) => {
+  const safeSearch = String(query || '').trim().toLowerCase();
+  if (!safeSearch) {
+    return true;
+  }
+
+  const valuesToSearch = [
+    lead.contactNumber,
+    lead.batchName,
+    lead.product,
+    ...Object.values(lead.rawData || {}),
+  ];
+
+  return valuesToSearch.some((value) => String(value || '').toLowerCase().includes(safeSearch));
+};
+
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
@@ -576,44 +617,20 @@ export const getAnalystLeads = asyncHandler(async (req, res) => {
   const page = Math.max(Number.parseInt(req.query.page, 10) || 1, 1);
   const pageSize = Math.min(Math.max(Number.parseInt(req.query.pageSize, 10) || 100, 1), 200);
 
-  const filters = {};
-  if (product) {
-    filters.product = String(product).toLowerCase();
-  }
-  if (batchName) {
-    filters.batchName = String(batchName).trim();
-  }
-  if (importBatchId) {
-    filters.importBatch = importBatchId;
-  }
-  if (duplicateStatus) {
-    filters.duplicateStatus = duplicateStatus;
-  }
-  if (assignmentStatus === 'unassigned') {
-    filters.assignedAgentCount = 0;
-  }
-  if (assignmentStatus === 'assigned') {
-    filters.assignedAgentCount = { $gt: 0 };
-  }
+  const filters = buildAnalystLeadFilters({
+    product,
+    duplicateStatus,
+    assignmentStatus,
+    batchName,
+    importBatchId,
+  });
 
   const leads = await Lead.find(filters)
     .sort({ createdAt: -1 })
     .populate('importBatch', 'sourceFileName')
     .lean();
 
-  const filteredLeads = search
-    ? leads.filter((lead) => {
-        const safeSearch = String(search).trim().toLowerCase();
-        const valuesToSearch = [
-          lead.contactNumber,
-          lead.batchName,
-          lead.product,
-          ...Object.values(lead.rawData || {}),
-        ];
-
-        return valuesToSearch.some((value) => String(value || '').toLowerCase().includes(safeSearch));
-      })
-    : leads;
+  const filteredLeads = search ? leads.filter((lead) => leadMatchesSearch(lead, search)) : leads;
 
   const totalCount = filteredLeads.length;
   const totalPages = Math.max(Math.ceil(totalCount / pageSize), 1);
@@ -649,6 +666,60 @@ export const getAnalystLeads = asyncHandler(async (req, res) => {
       ...lead,
       assignments: assignmentsByLeadId[String(lead._id)] || [],
     })),
+  });
+});
+
+export const getAnalystLeadSelection = asyncHandler(async (req, res) => {
+  const { product, duplicateStatus, search, assignmentStatus, batchName, importBatchId } = req.query;
+  const count = Math.min(Math.max(Number.parseInt(req.query.count, 10) || 0, 0), 5000);
+  const filters = buildAnalystLeadFilters({
+    product,
+    duplicateStatus,
+    assignmentStatus,
+    batchName,
+    importBatchId,
+  });
+
+  if (!count) {
+    res.status(200).json({
+      count: 0,
+      leadIds: [],
+    });
+    return;
+  }
+
+  if (!search) {
+    const leads = await Lead.find(filters)
+      .sort({ createdAt: -1 })
+      .limit(count)
+      .select('_id')
+      .lean();
+
+    res.status(200).json({
+      count: leads.length,
+      leadIds: leads.map((lead) => String(lead._id)),
+    });
+    return;
+  }
+
+  const leads = await Lead.find(filters)
+    .sort({ createdAt: -1 })
+    .select('_id contactNumber batchName product rawData')
+    .lean();
+
+  const leadIds = [];
+  for (const lead of leads) {
+    if (leadMatchesSearch(lead, search)) {
+      leadIds.push(String(lead._id));
+      if (leadIds.length >= count) {
+        break;
+      }
+    }
+  }
+
+  res.status(200).json({
+    count: leadIds.length,
+    leadIds,
   });
 });
 

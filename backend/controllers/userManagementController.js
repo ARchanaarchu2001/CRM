@@ -775,6 +775,20 @@ export const updateUser = asyncHandler(async (req, res) => {
     delete req.body.team;
     delete req.body.teamLead;
     delete req.body.assignedTeam;
+  } else if (req.user.role === ROLES.AGENT) {
+    if (targetUser._id.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ success: false, message: 'Forbidden to edit this user' });
+    }
+
+    delete req.body.role;
+    delete req.body.team;
+    delete req.body.teamLead;
+    delete req.body.assignedTeam;
+    delete req.body.fullName;
+    delete req.body.email;
+    delete req.body.isActive;
+    delete req.body.isDeleted;
+    delete req.body.updatedBy;
   } else if (req.user.role !== ROLES.SUPER_ADMIN) {
     return res.status(403).json({ success: false, message: 'Forbidden' });
   }

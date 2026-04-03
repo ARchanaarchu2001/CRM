@@ -3,6 +3,7 @@ import {
   assignLeadsToAgent,
   deleteAnalystBatch,
   getAnalystBatches,
+  getAnalystLeadSelection,
   getAnalystPerformanceOverview,
   getManagedAgentBatchView,
   getManagedAgentDashboardView,
@@ -33,6 +34,7 @@ router.use(protect);
 router.get('/metadata', authorizeRoles(ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN), getLeadMetadata);
 router.get('/analyst/batches', authorizeRoles(ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN), getAnalystBatches);
 router.get('/analyst/overview', authorizeRoles(ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN), getAnalystPerformanceOverview);
+router.get('/analyst/selection', authorizeRoles(ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN), getAnalystLeadSelection);
 router.get('/analyst', authorizeRoles(ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN), getAnalystLeads);
 router.get(
   '/team-view/agents/:agentId/dashboard',

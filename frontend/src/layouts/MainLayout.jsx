@@ -28,6 +28,18 @@ const MainLayout = () => {
     navigate('/login');
   };
 
+  const handleNavClick = (event, targetPath) => {
+    if (!targetPath) {
+      return;
+    }
+
+    if (role === 'agent' && /\/agent-dash\/[^/]+$/.test(location.pathname)) {
+      event.preventDefault();
+      window.location.assign(targetPath);
+      return;
+    }
+  };
+
   const getGreeting = () => {
     const hour = new Date().getHours();
     if (hour < 12) return 'Good Morning';
@@ -186,6 +198,7 @@ const firstName = getDisplayName();
                 <Link
                   key={link.to}
                   to={link.to}
+                  onClick={(event) => handleNavClick(event, link.to)}
                   className="rounded-full bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200"
                 >
                   {link.label}
@@ -196,7 +209,7 @@ const firstName = getDisplayName();
       </header>
 
       <main className={`flex-1 w-full p-4 sm:p-6 lg:p-8 ${isWideTablePage ? 'max-w-none' : 'mx-auto max-w-7xl'}`}>
-        <div className="min-h-full">
+        <div key={location.pathname} className="min-h-full">
           <Outlet />
         </div>
       </main>

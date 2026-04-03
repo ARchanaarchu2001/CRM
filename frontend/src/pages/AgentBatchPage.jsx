@@ -1065,15 +1065,6 @@ const AgentBatchPage = () => {
             >
               Back
             </button>
-            {!isManagedView && (
-              <button
-                type="button"
-                onClick={handleHideBatch}
-                className="rounded-xl border border-red-200 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
-              >
-                Hide This Batch
-              </button>
-            )}
           </div>
         </div>
 

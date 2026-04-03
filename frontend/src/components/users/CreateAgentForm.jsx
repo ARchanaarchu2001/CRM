@@ -59,18 +59,15 @@ const CreateAgentForm = () => {
   const handleSubmit = (e) => {
     e.preventDefault();
 
-    if (!profilePhoto) {
-      alert('Profile photo is required for agents.');
-      return;
-    }
-
     const submitData = new FormData();
     submitData.append('fullName', formData.fullName);
     submitData.append('email', formData.email);
     submitData.append('password', formData.password);
     submitData.append('role', 'agent');
 
-    submitData.append('profilePhoto', profilePhoto);
+    if (profilePhoto) {
+      submitData.append('profilePhoto', profilePhoto);
+    }
 
     dispatch(createAgentByTeamLead(submitData));
   };
@@ -176,14 +173,13 @@ const CreateAgentForm = () => {
 
         <div className="flex flex-col gap-2 rounded-lg border border-dashed border-blue-200 bg-blue-50/50 p-6">
           <label className="text-sm font-medium text-slate-700">
-            Mandatory Profile Photo <span className="text-red-500">*</span>
+            Profile Photo <span className="text-slate-400">(Optional)</span>
           </label>
           <div className="flex items-center gap-4">
             
             <input
               id="profilePhotoInput"
               type="file"
-              required
               accept=".jpg,.jpeg,.png,.webp"
               onChange={handleFileChange}
               className="block w-full text-sm text-slate-500 file:mr-4 file:rounded-full file:border-0 file:bg-blue-100 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-blue-700 hover:file:bg-blue-200 cursor-pointer"
@@ -212,7 +208,7 @@ const CreateAgentForm = () => {
         <div className="flex justify-end border-t border-slate-200 pt-6">
           <button
             type="submit"
-            disabled={isLoading || !profilePhoto}
+            disabled={isLoading}
             className="flex min-w-[140px] items-center justify-center rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-70"
           >
             {isLoading ? (

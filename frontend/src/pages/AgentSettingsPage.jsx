@@ -1,152 +1,105 @@
 import React, { useState } from 'react';
-import { useDispatch } from 'react-redux';
-import { useNavigate } from 'react-router-dom';
-import { changePasswordAPI } from '../features/auth/authApi.js';
-import { logoutLocally } from '../features/auth/authSlice.js';
+import { useDispatch, useSelector } from 'react-redux';
+import { updateDashboardUser } from '../api/dashboard.js';
+import { fetchMe } from '../features/auth/authSlice.js';
 
 const AgentSettingsPage = () => {
   const dispatch = useDispatch();
-  const navigate = useNavigate();
-  const [formData, setFormData] = useState({
-    currentPassword: '',
-    newPassword: '',
-    confirmPassword: '',
-  });
-  const [showPasswords, setShowPasswords] = useState({
-    currentPassword: false,
-    newPassword: false,
-    confirmPassword: false,
-  });
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const { user } = useSelector((state) => state.auth);
+  const [profilePhotoFile, setProfilePhotoFile] = useState(null);
+  const [photoPreview, setPhotoPreview] = useState(user?.profilePhoto ? `/uploads/${user.profilePhoto}` : '');
+  const [isPhotoSubmitting, setIsPhotoSubmitting] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
 
-  const handleChange = (event) => {
-    const { name, value } = event.target;
-    setFormData((current) => ({ ...current, [name]: value }));
+  const handlePhotoChange = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    setProfilePhotoFile(file);
+    setPhotoPreview(URL.createObjectURL(file));
+    setMessage('');
+    setError('');
   };
 
-  const toggleVisibility = (field) => {
-    setShowPasswords((current) => ({ ...current, [field]: !current[field] }));
-  };
-
-  const handleSubmit = async (event) => {
+  const handlePhotoSubmit = async (event) => {
     event.preventDefault();
     setMessage('');
     setError('');
 
-    if (formData.newPassword.length < 6) {
-      setError('New password must be at least 6 characters.');
+    if (!user?._id) {
+      setError('Could not identify your account.');
       return;
     }
 
-    if (formData.newPassword !== formData.confirmPassword) {
-      setError('New password and confirm password must match.');
+    if (!profilePhotoFile) {
+      setError('Choose a profile photo first.');
       return;
     }
 
-    setIsSubmitting(true);
+    setIsPhotoSubmitting(true);
 
     try {
-      const response = await changePasswordAPI({
-        currentPassword: formData.currentPassword,
-        newPassword: formData.newPassword,
-      });
-
-      setMessage(response.message || 'Password changed successfully. Please log in again.');
-      setFormData({
-        currentPassword: '',
-        newPassword: '',
-        confirmPassword: '',
-      });
-
-      dispatch(
-        logoutLocally({
-          notice: response.message || 'Password changed successfully. Please log in again.',
-        })
-      );
-
-      setTimeout(() => {
-        navigate('/login');
-      }, 1200);
-    } catch (changeError) {
-      setError(changeError.response?.data?.message || 'Failed to change password');
+      const submitData = new FormData();
+      submitData.append('profilePhoto', profilePhotoFile);
+      await updateDashboardUser(user._id, submitData);
+      await dispatch(fetchMe()).unwrap();
+      setProfilePhotoFile(null);
+      setMessage('Profile photo updated successfully.');
+    } catch (updateError) {
+      setError(updateError.response?.data?.message || 'Failed to update profile photo');
     } finally {
-      setIsSubmitting(false);
+      setIsPhotoSubmitting(false);
     }
   };
 
-  const renderPasswordField = (field, label, placeholder) => (
-    <label className="flex flex-col gap-1 text-sm text-slate-700">
-      <span className="font-medium">
-        {label} <span className="text-rose-500">*</span>
-      </span>
-      <div className="relative">
-        <input
-          type={showPasswords[field] ? 'text' : 'password'}
-          name={field}
-          value={formData[field]}
-          onChange={handleChange}
-          required
-          minLength={6}
-          placeholder={placeholder}
-          className="w-full rounded-xl border border-slate-300 px-4 py-3 pr-14 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100"
-        />
-        <button
-          type="button"
-          onClick={() => toggleVisibility(field)}
-          className="absolute inset-y-0 right-3 text-sm font-semibold text-slate-500 hover:text-slate-700"
-        >
-          {showPasswords[field] ? 'Hide' : 'Show'}
-        </button>
-      </div>
-    </label>
-  );
-
   return (
-    <div className="mx-auto max-w-3xl space-y-6 py-6">
-      <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
-        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Settings</p>
-        <h1 className="mt-2 text-3xl font-bold tracking-tight text-slate-900">Agent Settings</h1>
+    <div className="mx-auto max-w-xl py-6">
+      <section className="rounded-[1.75rem] border border-slate-200 bg-white p-6 shadow-sm">
+        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Settings</p>
+        <h1 className="mt-2 text-2xl font-bold text-slate-900">Profile Photo</h1>
         <p className="mt-2 text-sm text-slate-500">
-          Update your password securely by entering your current password first.
+          Update your profile picture.
         </p>
-      </section>
 
-      {message && (
-        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800">
-          {message}
-        </div>
-      )}
+        {message && (
+          <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800">
+            {message}
+          </div>
+        )}
 
-      {error && (
-        <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">
-          {error}
-        </div>
-      )}
+        {error && (
+          <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">
+            {error}
+          </div>
+        )}
 
-      <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
-        <form onSubmit={handleSubmit} className="space-y-5">
-          <div className="grid gap-4">
-            {renderPasswordField('currentPassword', 'Current Password', 'Enter your current password')}
-            {renderPasswordField('newPassword', 'New Password', 'Enter your new password')}
-            {renderPasswordField('confirmPassword', 'Confirm New Password', 'Re-enter your new password')}
+        <div className="mt-5 flex flex-col items-center gap-4 rounded-2xl bg-slate-50 p-5">
+          <div className="h-24 w-24 overflow-hidden rounded-full border border-slate-200 bg-white shadow-sm">
+            {photoPreview ? (
+              <img src={photoPreview} alt={user?.fullName || 'Profile preview'} className="h-full w-full object-cover" />
+            ) : null}
           </div>
 
-          <div className="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-600">
-            After the password is changed, you will be logged out and asked to sign in again.
-          </div>
+          <form onSubmit={handlePhotoSubmit} className="w-full space-y-4">
+            <input
+              type="file"
+              accept=".jpg,.jpeg,.png,.webp"
+              onChange={handlePhotoChange}
+              className="block w-full text-sm text-slate-500 file:mr-4 file:rounded-full file:border-0 file:bg-indigo-100 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-indigo-700 hover:file:bg-indigo-200"
+            />
 
-          <div className="flex justify-end border-t border-slate-200 pt-4">
             <button
               type="submit"
-              disabled={isSubmitting}
-              className="rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={isPhotoSubmitting}
+              className="w-full rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {isSubmitting ? 'Updating...' : 'Update Password'}
+              {isPhotoSubmitting ? 'Updating...' : 'Update Photo'}
             </button>
-          </div>
-        </form>
+          </form>
+        </div>
       </section>
     </div>
   );
