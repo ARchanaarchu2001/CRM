@@ -1,12 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { Outlet } from 'react-router-dom';
-import { useDispatch } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 import { fetchMe, logoutLocally, refreshToken, restoreAuthFromStorage } from '../features/auth/authSlice.js';
 import { getAuthToken } from '../utils/localStorage.js';
+
+const SILENT_REFRESH_INTERVAL_MS = 10 * 60 * 1000;
 
 const PersistLogin = () => {
   const [isLoading, setIsLoading] = useState(true);
   const dispatch = useDispatch();
+  const { accessToken, isAuthenticated } = useSelector((state) => state.auth);
 
   useEffect(() => {
     let isMounted = true;
@@ -44,6 +47,41 @@ const PersistLogin = () => {
       isMounted = false;
     };
   }, [dispatch]); // Run exactly once on mount
+
+  useEffect(() => {
+    const hasSession = Boolean(accessToken || getAuthToken() || isAuthenticated);
+
+    if (!hasSession) {
+      return undefined;
+    }
+
+    const runSilentRefresh = async () => {
+      try {
+        await dispatch(refreshToken()).unwrap();
+      } catch {
+        // Keep the current UI session intact here.
+        // Real auth failures will still be handled by protected requests
+        // and the main initialization flow.
+      }
+    };
+
+    const intervalId = window.setInterval(runSilentRefresh, SILENT_REFRESH_INTERVAL_MS);
+
+    const handleVisibilityOrFocus = () => {
+      if (document.visibilityState === 'visible') {
+        runSilentRefresh();
+      }
+    };
+
+    window.addEventListener('focus', handleVisibilityOrFocus);
+    document.addEventListener('visibilitychange', handleVisibilityOrFocus);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', handleVisibilityOrFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
+    };
+  }, [accessToken, dispatch, isAuthenticated]);
 
   if (isLoading) {
     return (
