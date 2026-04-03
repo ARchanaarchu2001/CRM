@@ -106,6 +106,21 @@ const COLOR_OPTIONS = [
   { key: 'sky', label: 'Blue', header: 'bg-sky-100 text-sky-900', filter: 'bg-sky-50', cell: 'bg-sky-50/85' },
   { key: 'rose', label: 'Rose', header: 'bg-rose-100 text-rose-900', filter: 'bg-rose-50', cell: 'bg-rose-50/85' },
 ];
+const MIN_COLUMN_WIDTH = 90;
+const DEFAULT_COLUMN_WIDTHS = {
+  contact: 220,
+  product: 120,
+  contactabilityStatus: 180,
+  callAttempt1Date: 220,
+  callAttempt2Date: 220,
+  callingRemark: 180,
+  interestedRemark: 180,
+  notInterestedRemark: 190,
+  agentNotes: 200,
+  status: 130,
+  pipeline: 215,
+  saveState: 120,
+};
 
 const getRemarkValueClasses = (columnKey, value) => {
   const normalizedValue = String(value || '').trim().toLowerCase();
@@ -159,10 +174,13 @@ const AgentBatchPage = () => {
   const [isFocusMode, setIsFocusMode] = useState(false);
   const [isFixedColumnEditMode, setIsFixedColumnEditMode] = useState(false);
   const [columnColors, setColumnColors] = useState(DEFAULT_COLUMN_COLORS);
+  const [columnWidths, setColumnWidths] = useState(DEFAULT_COLUMN_WIDTHS);
+  const [hiddenColumnKeys, setHiddenColumnKeys] = useState([]);
   const tableContainerRef = useRef(null);
   const bottomScrollbarRef = useRef(null);
   const tableElementRef = useRef(null);
   const isSyncingScrollRef = useRef(false);
+  const resizeStateRef = useRef(null);
   const timersRef = useRef(new Map());
   const serializedColumnFilters = JSON.stringify(columnFilters);
   const fixedColumnStorageKey = useMemo(
@@ -171,6 +189,14 @@ const AgentBatchPage = () => {
   );
   const columnColorStorageKey = useMemo(
     () => `agent-batch-column-colors:${isManagedView ? agentId || 'managed' : 'self'}:${batchId || 'default'}`,
+    [agentId, batchId, isManagedView]
+  );
+  const columnWidthStorageKey = useMemo(
+    () => `agent-batch-column-widths:${isManagedView ? agentId || 'managed' : 'self'}:${batchId || 'default'}`,
+    [agentId, batchId, isManagedView]
+  );
+  const hiddenColumnStorageKey = useMemo(
+    () => `agent-batch-hidden-columns:${isManagedView ? agentId || 'managed' : 'self'}:${batchId || 'default'}`,
     [agentId, batchId, isManagedView]
   );
 
@@ -404,6 +430,63 @@ const AgentBatchPage = () => {
 
     window.localStorage.setItem(columnColorStorageKey, JSON.stringify(columnColors));
   }, [columnColorStorageKey, columnColors]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const storedValue = window.localStorage.getItem(columnWidthStorageKey);
+    if (!storedValue) {
+      setColumnWidths(DEFAULT_COLUMN_WIDTHS);
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(storedValue);
+      setColumnWidths({
+        ...DEFAULT_COLUMN_WIDTHS,
+        ...(parsed || {}),
+      });
+    } catch {
+      setColumnWidths(DEFAULT_COLUMN_WIDTHS);
+    }
+  }, [columnWidthStorageKey]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    window.localStorage.setItem(columnWidthStorageKey, JSON.stringify(columnWidths));
+  }, [columnWidthStorageKey, columnWidths]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const storedValue = window.localStorage.getItem(hiddenColumnStorageKey);
+    if (!storedValue) {
+      setHiddenColumnKeys([]);
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(storedValue);
+      setHiddenColumnKeys(Array.isArray(parsed) ? parsed : []);
+    } catch {
+      setHiddenColumnKeys([]);
+    }
+  }, [hiddenColumnStorageKey]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    window.localStorage.setItem(hiddenColumnStorageKey, JSON.stringify(hiddenColumnKeys));
+  }, [hiddenColumnKeys, hiddenColumnStorageKey]);
   const filteredAssignments = useMemo(() => {
     const matchesFilterValue = (sourceValue, filterValue) =>
       String(sourceValue || '').toLowerCase().includes(String(filterValue || '').trim().toLowerCase());
@@ -858,40 +941,24 @@ const AgentBatchPage = () => {
     [visibleReadOnlyHeaders]
   );
 
-  const columnWidths = useMemo(
-    () => ({
-      contact: 220,
-      product: 120,
-      contactabilityStatus: 180,
-      callAttempt1Date: 220,
-      callAttempt2Date: 220,
-      callingRemark: 180,
-      interestedRemark: 180,
-      notInterestedRemark: 190,
-      agentNotes: 200,
-      status: 130,
-      pipeline: 215,
-      saveState: 120,
-    }),
-    []
-  );
-
   const getColumnWidth = (columnKey) => {
     if (columnKey.startsWith('raw:')) {
-      return 170;
+      return Math.max(columnWidths[columnKey] || 170, MIN_COLUMN_WIDTH);
     }
-    return columnWidths[columnKey] || 160;
+    return Math.max(columnWidths[columnKey] || DEFAULT_COLUMN_WIDTHS[columnKey] || 160, MIN_COLUMN_WIDTH);
   };
 
   const pinnedColumnKeys = useMemo(
-    () => orderedColumnKeys.filter((key) => fixedColumnKeys.includes(key)),
-    [fixedColumnKeys, orderedColumnKeys]
+    () => orderedColumnKeys.filter((key) => fixedColumnKeys.includes(key) && !hiddenColumnKeys.includes(key)),
+    [fixedColumnKeys, hiddenColumnKeys, orderedColumnKeys]
   );
   const orderedDisplayColumnKeys = useMemo(() => {
     const pinnedAfterContact = pinnedColumnKeys.filter((key) => key !== 'contact');
-    const remaining = orderedColumnKeys.filter((key) => key !== 'contact' && !pinnedAfterContact.includes(key));
+    const remaining = orderedColumnKeys.filter(
+      (key) => key !== 'contact' && !pinnedAfterContact.includes(key) && !hiddenColumnKeys.includes(key)
+    );
     return ['contact', ...pinnedAfterContact, ...remaining];
-  }, [orderedColumnKeys, pinnedColumnKeys]);
+  }, [hiddenColumnKeys, orderedColumnKeys, pinnedColumnKeys]);
 
   const getPinnedOffset = (columnKey) =>
     pinnedColumnKeys
@@ -915,6 +982,17 @@ const AgentBatchPage = () => {
           maxWidth: `${getColumnWidth(columnKey)}px`,
         }
       : undefined;
+  const getColumnStyle = (columnKey) => {
+    const width = `${getColumnWidth(columnKey)}px`;
+    const pinnedStyle = getPinnedStyle(columnKey);
+
+    return {
+      minWidth: width,
+      width,
+      maxWidth: width,
+      ...(pinnedStyle || {}),
+    };
+  };
   const getColumnColorClasses = (columnKey, kind = 'cell') => {
     const colorKey = columnColors[columnKey];
     const color = COLOR_OPTIONS.find((option) => option.key === colorKey);
@@ -923,34 +1001,77 @@ const AgentBatchPage = () => {
     }
     return color[kind] || '';
   };
-  const movePinnedColumn = (columnKey, direction) => {
-    setFixedColumnKeys((current) => {
-      if (columnKey === 'contact') {
-        return current;
-      }
-
-      const pinnedWithoutContact = current.filter((key) => key !== 'contact');
-      const currentIndex = pinnedWithoutContact.indexOf(columnKey);
-      if (currentIndex === -1) {
-        return current;
-      }
-
-      const nextPinned = [...pinnedWithoutContact];
-      const swapIndex = direction === 'left' ? currentIndex - 1 : currentIndex + 1;
-      if (swapIndex < 0 || swapIndex >= nextPinned.length) {
-        return current;
-      }
-
-      [nextPinned[currentIndex], nextPinned[swapIndex]] = [nextPinned[swapIndex], nextPinned[currentIndex]];
-      return ['contact', ...nextPinned];
-    });
-  };
   const setRemarkColumnColor = (columnKey, colorKey) => {
     setColumnColors((current) => ({
       ...current,
       [columnKey]: colorKey,
     }));
   };
+  const toggleColumnHidden = (columnKey) => {
+    if (columnKey === 'contact') {
+      return;
+    }
+
+    setHiddenColumnKeys((current) =>
+      current.includes(columnKey)
+        ? current.filter((key) => key !== columnKey)
+        : [...current, columnKey]
+    );
+  };
+  const startColumnResize = (event, columnKey) => {
+    if (!isFixedColumnEditMode || isManagedView) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    resizeStateRef.current = {
+      columnKey,
+      startX: event.clientX,
+      startWidth: getColumnWidth(columnKey),
+    };
+
+    if (document.body) {
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+    }
+  };
+
+  useEffect(() => {
+    const handlePointerMove = (event) => {
+      const resizeState = resizeStateRef.current;
+      if (!resizeState) {
+        return;
+      }
+
+      const nextWidth = Math.max(
+        resizeState.startWidth + (event.clientX - resizeState.startX),
+        MIN_COLUMN_WIDTH
+      );
+
+      setColumnWidths((current) => ({
+        ...current,
+        [resizeState.columnKey]: nextWidth,
+      }));
+    };
+
+    const stopResize = () => {
+      resizeStateRef.current = null;
+      if (document.body) {
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+      }
+    };
+
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', stopResize);
+
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', stopResize);
+    };
+  }, []);
   const renderHeaderLabel = (columnKey, label, onSort) => (
     <div className="space-y-2">
       <div className="flex items-center justify-between gap-2">
@@ -959,26 +1080,6 @@ const AgentBatchPage = () => {
         </button>
         {isFixedColumnEditMode && !isManagedView ? (
           <div className="flex items-center gap-1">
-            {isFixedColumn(columnKey) ? (
-              <>
-                <button
-                  type="button"
-                  onClick={() => movePinnedColumn(columnKey, 'left')}
-                  className="rounded bg-white/70 px-1.5 py-1 text-[10px] font-bold text-slate-600 ring-1 ring-slate-300 hover:bg-white"
-                  title="Move pinned column left"
-                >
-                  ←
-                </button>
-                <button
-                  type="button"
-                  onClick={() => movePinnedColumn(columnKey, 'right')}
-                  className="rounded bg-white/70 px-1.5 py-1 text-[10px] font-bold text-slate-600 ring-1 ring-slate-300 hover:bg-white"
-                  title="Move pinned column right"
-                >
-                  →
-                </button>
-              </>
-            ) : null}
             <button
               type="button"
               onClick={() =>
@@ -996,6 +1097,18 @@ const AgentBatchPage = () => {
               title={isFixedColumn(columnKey) ? 'Remove from fixed columns' : 'Add to fixed columns'}
             >
               {isFixedColumn(columnKey) ? 'Fixed' : 'Pin'}
+            </button>
+            <button
+              type="button"
+              onClick={() => toggleColumnHidden(columnKey)}
+              className={`rounded px-2 py-1 text-[10px] font-bold uppercase tracking-wide ${
+                hiddenColumnKeys.includes(columnKey)
+                  ? 'bg-slate-700 text-white'
+                  : 'bg-white text-slate-700 ring-1 ring-slate-300 hover:bg-slate-50'
+              }`}
+              title={hiddenColumnKeys.includes(columnKey) ? 'Show column again' : 'Hide this column'}
+            >
+              {hiddenColumnKeys.includes(columnKey) ? 'Hidden' : 'Hide'}
             </button>
           </div>
         ) : null}
@@ -1227,6 +1340,21 @@ const AgentBatchPage = () => {
                 : 'None'}
             </div>
             {message && <div className="text-xs font-medium text-slate-500">{message}</div>}
+            {isFixedColumnEditMode && hiddenColumnKeys.length ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-medium text-slate-500">Hidden:</span>
+                {hiddenColumnKeys.map((key) => (
+                  <button
+                    key={`hidden-${key}`}
+                    type="button"
+                    onClick={() => toggleColumnHidden(key)}
+                    className="rounded-full bg-slate-700 px-3 py-1 text-xs font-medium text-white"
+                  >
+                    {fixedColumnOptions.find((option) => option.key === key)?.label || key} x
+                  </button>
+                ))}
+              </div>
+            ) : null}
           </div>
           <div className="flex items-center gap-2">
             {!isManagedView && (
@@ -1269,15 +1397,28 @@ const AgentBatchPage = () => {
                     key={`header-${columnKey}`}
                     className={getPinnedClasses(
                       columnKey,
-                      'sticky top-0 whitespace-nowrap px-3 py-2 text-left font-semibold',
+                      'relative sticky top-0 whitespace-nowrap border-r border-slate-200 px-3 py-2 text-left font-semibold overflow-visible',
                       getHeaderBgClass(columnKey),
                       columnKey === 'contact' ? 'z-50' : 'z-40'
                     )}
-                    style={getPinnedStyle(columnKey)}
+                    style={getColumnStyle(columnKey)}
                   >
-                    {['agentNotes', 'pipeline', 'saveState'].includes(columnKey)
-                      ? getColumnLabel(columnKey)
-                      : renderHeaderLabel(columnKey, getColumnLabel(columnKey), () => toggleSort(columnKey))}
+                    <div className="relative">
+                      {['agentNotes', 'pipeline', 'saveState'].includes(columnKey)
+                        ? getColumnLabel(columnKey)
+                        : renderHeaderLabel(columnKey, getColumnLabel(columnKey), () => toggleSort(columnKey))}
+                    </div>
+                    {isFixedColumnEditMode && !isManagedView ? (
+                      <button
+                        type="button"
+                        onPointerDown={(event) => startColumnResize(event, columnKey)}
+                        className="absolute top-0 right-[-5px] bottom-0 z-[60] w-[10px] cursor-col-resize bg-transparent"
+                        title="Drag to resize column"
+                      >
+                        <span className="pointer-events-none absolute top-0 bottom-0 left-1/2 w-px -translate-x-1/2 bg-slate-300" />
+                        <span className="pointer-events-none absolute top-1 bottom-1 left-1/2 w-[3px] -translate-x-1/2 rounded-full bg-slate-500/80" />
+                      </button>
+                    ) : null}
                   </th>
                 ))}
               </tr>
@@ -1287,28 +1428,28 @@ const AgentBatchPage = () => {
                     key={`filter-${columnKey}`}
                     className={getPinnedClasses(
                       columnKey,
-                      'sticky top-[41px] px-3 py-2',
+                      'sticky top-[41px] border-r border-slate-200 px-3 py-2',
                       getFilterBgClass(columnKey),
                       columnKey === 'contact' ? 'z-40' : 'z-30'
                     )}
-                    style={getPinnedStyle(columnKey)}
+                    style={getColumnStyle(columnKey)}
                   >
                     {columnKey === 'contact' ? (
-                      <input type="text" value={columnFilters.contact || ''} onChange={(event) => updateColumnFilter('contact', event.target.value)} placeholder="Search" className="w-[132px] rounded-md border border-slate-300 px-2 py-1 text-[12px]" />
+                      <input type="text" value={columnFilters.contact || ''} onChange={(event) => updateColumnFilter('contact', event.target.value)} placeholder="Search" className="w-full min-w-0 rounded-md border border-slate-300 px-2 py-1 text-[12px]" />
                     ) : columnKey === 'product' ? (
-                      <input type="text" value={columnFilters.product || ''} onChange={(event) => updateColumnFilter('product', event.target.value)} placeholder="Filter" className="w-[115px] rounded-md border border-slate-300 px-2 py-1 text-[12px]" />
+                      <input type="text" value={columnFilters.product || ''} onChange={(event) => updateColumnFilter('product', event.target.value)} placeholder="Filter" className="w-full min-w-0 rounded-md border border-slate-300 px-2 py-1 text-[12px]" />
                     ) : columnKey.startsWith('raw:') ? (
-                      <input type="text" value={columnFilters[columnKey] || ''} onChange={(event) => updateColumnFilter(columnKey, event.target.value)} placeholder="Search" className="w-[132px] rounded-md border border-slate-300 px-2 py-1 text-[12px]" />
+                      <input type="text" value={columnFilters[columnKey] || ''} onChange={(event) => updateColumnFilter(columnKey, event.target.value)} placeholder="Search" className="w-full min-w-0 rounded-md border border-slate-300 px-2 py-1 text-[12px]" />
                     ) : columnKey === 'contactabilityStatus' ? (
-                      <select value={columnFilters.contactabilityStatus || ''} onChange={(event) => updateColumnFilter('contactabilityStatus', event.target.value)} className="w-[150px] rounded-md border border-slate-300 px-2 py-1 text-[12px]"><option value="">All</option>{(activeRemarkConfig.contactabilityStatuses || []).map((status) => <option key={status} value={status}>{status}</option>)}</select>
+                      <select value={columnFilters.contactabilityStatus || ''} onChange={(event) => updateColumnFilter('contactabilityStatus', event.target.value)} className="w-full min-w-0 rounded-md border border-slate-300 px-2 py-1 text-[12px]"><option value="">All</option>{(activeRemarkConfig.contactabilityStatuses || []).map((status) => <option key={status} value={status}>{status}</option>)}</select>
                     ) : columnKey === 'callingRemark' ? (
-                      <select value={columnFilters.callingRemark || ''} onChange={(event) => updateColumnFilter('callingRemark', event.target.value)} className="w-[150px] rounded-md border border-slate-300 px-2 py-1 text-[12px]"><option value="">All</option>{activeRemarkConfig.callingRemarks.map((remark) => <option key={remark} value={remark}>{remark}</option>)}</select>
+                      <select value={columnFilters.callingRemark || ''} onChange={(event) => updateColumnFilter('callingRemark', event.target.value)} className="w-full min-w-0 rounded-md border border-slate-300 px-2 py-1 text-[12px]"><option value="">All</option>{activeRemarkConfig.callingRemarks.map((remark) => <option key={remark} value={remark}>{remark}</option>)}</select>
                     ) : columnKey === 'interestedRemark' ? (
-                      <select value={columnFilters.interestedRemark || ''} onChange={(event) => updateColumnFilter('interestedRemark', event.target.value)} className="w-[150px] rounded-md border border-slate-300 px-2 py-1 text-[12px]"><option value="">All</option>{activeRemarkConfig.interestedRemarks.map((remark) => <option key={remark} value={remark}>{remark}</option>)}</select>
+                      <select value={columnFilters.interestedRemark || ''} onChange={(event) => updateColumnFilter('interestedRemark', event.target.value)} className="w-full min-w-0 rounded-md border border-slate-300 px-2 py-1 text-[12px]"><option value="">All</option>{activeRemarkConfig.interestedRemarks.map((remark) => <option key={remark} value={remark}>{remark}</option>)}</select>
                     ) : columnKey === 'notInterestedRemark' ? (
-                      <select value={columnFilters.notInterestedRemark || ''} onChange={(event) => updateColumnFilter('notInterestedRemark', event.target.value)} className="w-[165px] rounded-md border border-slate-300 px-2 py-1 text-[12px]"><option value="">All</option>{activeRemarkConfig.notInterestedRemarks.map((remark) => <option key={remark} value={remark}>{remark}</option>)}</select>
+                      <select value={columnFilters.notInterestedRemark || ''} onChange={(event) => updateColumnFilter('notInterestedRemark', event.target.value)} className="w-full min-w-0 rounded-md border border-slate-300 px-2 py-1 text-[12px]"><option value="">All</option>{activeRemarkConfig.notInterestedRemarks.map((remark) => <option key={remark} value={remark}>{remark}</option>)}</select>
                     ) : columnKey === 'status' ? (
-                      <select value={columnFilters.status || ''} onChange={(event) => updateColumnFilter('status', event.target.value)} className="w-[115px] rounded-md border border-slate-300 px-2 py-1 text-[12px]"><option value="">All</option><option value="submitted">Submitted</option><option value="activated">Activated</option></select>
+                      <select value={columnFilters.status || ''} onChange={(event) => updateColumnFilter('status', event.target.value)} className="w-full min-w-0 rounded-md border border-slate-300 px-2 py-1 text-[12px]"><option value="">All</option><option value="submitted">Submitted</option><option value="activated">Activated</option></select>
                     ) : null}
                   </th>
                 ))}
@@ -1331,11 +1472,11 @@ const AgentBatchPage = () => {
                   <tr key={assignment._id} className={`${accentRowBackground} ${isCopiedRow ? 'ring-1 ring-inset ring-amber-200' : ''}`}>
                     {orderedDisplayColumnKeys.map((columnKey) => {
                       const baseBg = getCellBgClass(columnKey, isCopiedRow ? 'bg-amber-50' : isCalledRow ? 'bg-emerald-50' : index % 2 === 0 ? 'bg-white' : 'bg-slate-50');
-                      const cellClassName = getPinnedClasses(columnKey, columnKey === 'contact' ? 'px-3 py-1.5 font-medium text-slate-900' : 'px-3 py-2', baseBg, columnKey === 'contact' ? 'z-30' : 'z-20');
+                      const cellClassName = getPinnedClasses(columnKey, columnKey === 'contact' ? 'border-r border-slate-200 px-3 py-1.5 font-medium text-slate-900' : 'border-r border-slate-200 px-3 py-2', baseBg, columnKey === 'contact' ? 'z-30' : 'z-20');
 
                       if (columnKey === 'contact') {
                         return (
-                          <td key={`${assignment._id}-${columnKey}`} className={cellClassName} style={getPinnedStyle(columnKey)}>
+                          <td key={`${assignment._id}-${columnKey}`} className={cellClassName} style={getColumnStyle(columnKey)}>
                             <button type="button" onClick={() => handleCopyContact(assignment._id, lead.rawData?.[contactHeader] || lead.contactNumber)} className="flex items-center gap-2 rounded px-1 py-0.5 text-left text-indigo-700 hover:bg-indigo-50 hover:text-indigo-900" title="Click to copy number">
                               <span className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full text-[11px] font-bold ${isCalledAssignment(assignment) ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-500'}`}>{isCalledAssignment(assignment) ? '✓' : '•'}</span>
                               {formatContactDisplay(lead.rawData?.[contactHeader] || lead.contactNumber)}
@@ -1346,19 +1487,19 @@ const AgentBatchPage = () => {
                       }
 
                       if (columnKey === 'product') {
-                        return <td key={`${assignment._id}-${columnKey}`} className={`${cellClassName} text-slate-700`} style={getPinnedStyle(columnKey)}>{assignment.product?.toUpperCase() || '-'}</td>;
+                        return <td key={`${assignment._id}-${columnKey}`} className={`${cellClassName} text-slate-700`} style={getColumnStyle(columnKey)}><div className="overflow-hidden whitespace-normal break-words [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:3]">{assignment.product?.toUpperCase() || '-'}</div></td>;
                       }
 
                       if (columnKey.startsWith('raw:')) {
                         const header = columnKey.replace('raw:', '');
-                        return <td key={`${assignment._id}-${columnKey}`} className={`${cellClassName} text-slate-600`} style={getPinnedStyle(columnKey)}>{lead.rawData?.[header] || '-'}</td>;
+                        return <td key={`${assignment._id}-${columnKey}`} className={`${cellClassName} text-slate-600`} style={getColumnStyle(columnKey)}><div className="overflow-hidden whitespace-normal break-words [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:3]">{lead.rawData?.[header] || '-'}</div></td>;
                       }
 
                       if (columnKey === 'contactabilityStatus') {
                         return (
-                          <td key={`${assignment._id}-${columnKey}`} className={cellClassName} style={getPinnedStyle(columnKey)}>
+                          <td key={`${assignment._id}-${columnKey}`} className={cellClassName} style={getColumnStyle(columnKey)}>
                             {isManagedView ? renderManagedFieldHistory(assignment, 'contactabilityStatus', assignment.contactabilityStatus) : (
-                              <select value={assignment.contactabilityStatus || ''} onChange={(event) => handleFieldChange(assignment._id, 'contactabilityStatus', event.target.value)} className="w-[150px] rounded-md border border-slate-300 px-2 py-1 text-[12px]">
+                              <select value={assignment.contactabilityStatus || ''} onChange={(event) => handleFieldChange(assignment._id, 'contactabilityStatus', event.target.value)} className="w-full min-w-0 rounded-md border border-slate-300 px-2 py-1 text-[12px]">
                                 <option value="">Select</option>
                                 {(remarks.contactabilityStatuses || []).map((status) => <option key={status} value={status}>{status}</option>)}
                               </select>
@@ -1370,11 +1511,11 @@ const AgentBatchPage = () => {
                       if (columnKey === 'callAttempt1Date' || columnKey === 'callAttempt2Date') {
                         const field = columnKey;
                         return (
-                          <td key={`${assignment._id}-${columnKey}`} className={cellClassName}>
+                          <td key={`${assignment._id}-${columnKey}`} className={cellClassName} style={getColumnStyle(columnKey)}>
                             {isManagedView ? renderManagedFieldHistory(assignment, field, assignment[field]) : (
-                              <div className="flex min-w-[200px] gap-1.5">
-                                <input type="date" value={splitAttemptValue(assignment[field]).date} onChange={(event) => handleAttemptChange(assignment, field, 'date', event.target.value)} className="w-[128px] rounded-md border border-slate-300 px-2 py-1 text-[12px]" />
-                                <input type="time" value={splitAttemptValue(assignment[field]).time} onChange={(event) => handleAttemptChange(assignment, field, 'time', event.target.value)} className="w-[82px] rounded-md border border-slate-300 px-2 py-1 text-[12px]" />
+                              <div className="flex w-full min-w-0 gap-1.5">
+                                <input type="date" value={splitAttemptValue(assignment[field]).date} onChange={(event) => handleAttemptChange(assignment, field, 'date', event.target.value)} className="min-w-0 flex-1 rounded-md border border-slate-300 px-2 py-1 text-[12px]" />
+                                <input type="time" value={splitAttemptValue(assignment[field]).time} onChange={(event) => handleAttemptChange(assignment, field, 'time', event.target.value)} className="w-[82px] min-w-0 rounded-md border border-slate-300 px-2 py-1 text-[12px]" />
                               </div>
                             )}
                           </td>
@@ -1389,9 +1530,9 @@ const AgentBatchPage = () => {
                         const widthClass = columnKey === 'notInterestedRemark' ? 'w-[170px]' : 'w-[160px]';
                         const selectColorClass = getRemarkValueClasses(columnKey, assignment[columnKey]);
                         return (
-                          <td key={`${assignment._id}-${columnKey}`} className={cellClassName} style={getPinnedStyle(columnKey)}>
+                          <td key={`${assignment._id}-${columnKey}`} className={cellClassName} style={getColumnStyle(columnKey)}>
                             {isManagedView ? renderManagedFieldHistory(assignment, columnKey, assignment[columnKey]) : (
-                              <select value={assignment[columnKey] || ''} onChange={(event) => handleFieldChange(assignment._id, columnKey, event.target.value)} className={`${widthClass} rounded-md border px-2 py-1 text-[12px] font-medium ${selectColorClass}`}>
+                              <select value={assignment[columnKey] || ''} onChange={(event) => handleFieldChange(assignment._id, columnKey, event.target.value)} className={`w-full min-w-0 rounded-md border px-2 py-1 text-[12px] font-medium ${selectColorClass}`}>
                                 <option value="">Select</option>
                                 {options.map((remark) => <option key={remark} value={remark}>{remark}</option>)}
                               </select>
@@ -1402,9 +1543,9 @@ const AgentBatchPage = () => {
 
                       if (columnKey === 'agentNotes') {
                         return (
-                          <td key={`${assignment._id}-${columnKey}`} className={cellClassName}>
+                          <td key={`${assignment._id}-${columnKey}`} className={cellClassName} style={getColumnStyle(columnKey)}>
                             {isManagedView ? renderManagedFieldHistory(assignment, 'agentNotes', assignment.agentNotes) : (
-                              <input type="text" value={assignment.agentNotes || ''} onChange={(event) => handleFieldChange(assignment._id, 'agentNotes', event.target.value)} className="w-[180px] rounded-md border border-slate-300 px-2 py-1 text-[12px]" />
+                              <input type="text" value={assignment.agentNotes || ''} onChange={(event) => handleFieldChange(assignment._id, 'agentNotes', event.target.value)} className="w-full min-w-0 rounded-md border border-slate-300 px-2 py-1 text-[12px]" />
                             )}
                           </td>
                         );
@@ -1412,9 +1553,9 @@ const AgentBatchPage = () => {
 
                       if (columnKey === 'status') {
                         return (
-                          <td key={`${assignment._id}-${columnKey}`} className={cellClassName} style={getPinnedStyle(columnKey)}>
+                          <td key={`${assignment._id}-${columnKey}`} className={cellClassName} style={getColumnStyle(columnKey)}>
                             {isManagedView ? renderManagedFieldHistory(assignment, 'status', assignment.status) : (
-                              <select value={assignment.status || ''} onChange={(event) => handleFieldChange(assignment._id, 'status', event.target.value)} className="w-[118px] rounded-md border border-slate-300 px-2 py-1 text-[12px]">
+                              <select value={assignment.status || ''} onChange={(event) => handleFieldChange(assignment._id, 'status', event.target.value)} className="w-full min-w-0 rounded-md border border-slate-300 px-2 py-1 text-[12px]">
                                 <option value="">Select</option>
                                 <option value="submitted">Submitted</option>
                                 <option value="activated">Activated</option>
@@ -1426,10 +1567,10 @@ const AgentBatchPage = () => {
 
                       if (columnKey === 'pipeline') {
                         return (
-                          <td key={`${assignment._id}-${columnKey}`} className={cellClassName}>
+                          <td key={`${assignment._id}-${columnKey}`} className={cellClassName} style={getColumnStyle(columnKey)}>
                             {isManagedView ? renderManagedFieldHistory(assignment, 'pipeline', assignment.inPipeline ? `In Pipeline${assignment.pipelineFollowUpDate ? ` - ${assignment.pipelineFollowUpDate}` : ''}` : assignment.pipelineFollowUpDate || 'Not In Pipeline') : (
-                              <div className="flex min-w-[205px] gap-1.5">
-                                <input type="date" value={assignment.pipelineFollowUpDate || ''} onChange={(event) => handleFieldChange(assignment._id, 'pipelineFollowUpDate', event.target.value)} className="w-[128px] rounded-md border border-slate-300 px-2 py-1 text-[12px]" />
+                              <div className="flex w-full min-w-0 gap-1.5">
+                                <input type="date" value={assignment.pipelineFollowUpDate || ''} onChange={(event) => handleFieldChange(assignment._id, 'pipelineFollowUpDate', event.target.value)} className="min-w-0 flex-1 rounded-md border border-slate-300 px-2 py-1 text-[12px]" />
                                 <button type="button" onClick={() => openPipelineDraft(assignment)} className={`rounded-lg px-3 py-1 text-xs font-medium text-white ${assignment.inPipeline ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-amber-600 hover:bg-amber-700'}`}>{assignment.inPipeline ? 'Added' : 'Add'}</button>
                               </div>
                             )}
@@ -1438,10 +1579,10 @@ const AgentBatchPage = () => {
                       }
 
                       if (columnKey === 'saveState') {
-                        return <td key={`${assignment._id}-${columnKey}`} className="px-3 py-1.5 text-xs text-slate-500">{!isManagedView && saveState[assignment._id] === 'saving' && 'Saving...'}{!isManagedView && saveState[assignment._id] === 'saved' && 'Saved'}{!isManagedView && saveState[assignment._id] === 'error' && 'Error'}</td>;
+                        return <td key={`${assignment._id}-${columnKey}`} className="border-r border-slate-200 px-3 py-1.5 text-xs text-slate-500" style={getColumnStyle(columnKey)}>{!isManagedView && saveState[assignment._id] === 'saving' && 'Saving...'}{!isManagedView && saveState[assignment._id] === 'saved' && 'Saved'}{!isManagedView && saveState[assignment._id] === 'error' && 'Error'}</td>;
                       }
 
-                      return <td key={`${assignment._id}-${columnKey}`} className={cellClassName}>-</td>;
+                      return <td key={`${assignment._id}-${columnKey}`} className={cellClassName} style={getColumnStyle(columnKey)}>-</td>;
                     })}
                   </tr>
                 );
