@@ -11,9 +11,63 @@ const DEFAULT_REMARK_CONFIG = {
   callingRemarkLabel: 'Calling Remarks',
   interestedRemarkLabel: 'Interested Remarks',
   notInterestedRemarkLabel: 'Not Interested Remarks',
-  callingRemarks: [],
-  interestedRemarks: [],
-  notInterestedRemarks: [],
+  callingRemarks: [
+    'Interested',
+    'Follow up',
+    'Call back',
+    'No Answer',
+    'Not Interested',
+    'Line Busy',
+    'Call Disconnected',
+    'DND',
+    'Switch Off',
+    'Invalid Number',
+    'Not Reachable',
+    'Not the owner',
+    'Order Submitted',
+    'Activated',
+    'Rejected',
+    'DNCR',
+    'Inactive MSISDN',
+  ],
+  interestedRemarks: [
+    'Dunning',
+    'EID Expired',
+    'CAP Limit',
+    'Black Listed',
+    'Under Passport',
+    'Out of Country',
+    'Ownership Transfer',
+    'IT Error',
+  ],
+  notInterestedRemarks: ['Bad Experience'],
+};
+
+const getRemarkValueClasses = (columnKey, value) => {
+  const normalizedValue = String(value || '').trim().toLowerCase();
+
+  if (!normalizedValue) {
+    return 'bg-white text-slate-700 border-slate-300';
+  }
+
+  if (columnKey === 'callingRemark') {
+    if (normalizedValue === 'interested') return 'bg-emerald-500 text-white border-emerald-600';
+    if (normalizedValue === 'not interested' || normalizedValue === 'dncr') return 'bg-rose-500 text-white border-rose-600';
+    if (normalizedValue === 'follow up') return 'bg-amber-300 text-amber-950 border-amber-400';
+    if (normalizedValue === 'call back') return 'bg-sky-400 text-sky-950 border-sky-500';
+    if (normalizedValue === 'order submitted' || normalizedValue === 'activated') return 'bg-violet-400 text-violet-950 border-violet-500';
+    return 'bg-slate-100 text-slate-800 border-slate-300';
+  }
+
+  if (columnKey === 'interestedRemark') {
+    return 'bg-emerald-100 text-emerald-950 border-emerald-200';
+  }
+
+  if (columnKey === 'notInterestedRemark') {
+    return 'bg-rose-100 text-rose-950 border-rose-200';
+  }
+
+  return 'bg-white text-slate-700 border-slate-300';
 };
 
 const splitAttemptValue = (value) => {
@@ -65,9 +119,10 @@ const AgentQueuePage = () => {
   const [assignments, setAssignments] = useState([]);
   const [message, setMessage] = useState('');
   const [saveState, setSaveState] = useState({});
-  const [copiedContact, setCopiedContact] = useState('');
+  const [copiedRowId, setCopiedRowId] = useState('');
   const [pipelineDraft, setPipelineDraft] = useState(null);
   const [agentName, setAgentName] = useState('');
+  const [persistedRemarkConfig, setPersistedRemarkConfig] = useState(DEFAULT_REMARK_CONFIG);
   const timersRef = useRef(new Map());
 
   const loadAssignments = async () => {
@@ -98,6 +153,13 @@ const AgentQueuePage = () => {
     () => assignments.filter((assignment) => matchesQueueType(assignment, queueType)),
     [assignments, queueType]
   );
+
+  useEffect(() => {
+    const nextRemarkConfig = visibleAssignments[0]?.remarkConfig;
+    if (nextRemarkConfig) {
+      setPersistedRemarkConfig(nextRemarkConfig);
+    }
+  }, [visibleAssignments]);
 
   const readOnlyHeaders = useMemo(() => {
     const keys = new Set();
@@ -186,17 +248,24 @@ const AgentQueuePage = () => {
     handleFieldChange(assignment._id, field, buildAttemptValue(nextDate, nextTime));
   };
 
-  const handleCopyContact = async (value) => {
+  const isCalledAssignment = (assignment) =>
+    Boolean(
+      assignment.contactabilityStatus ||
+        assignment.callingRemark ||
+        assignment.interestedRemark ||
+        assignment.notInterestedRemark ||
+        assignment.callAttempt1Date ||
+        assignment.callAttempt2Date
+    );
+
+  const handleCopyContact = async (assignmentId, value) => {
     const contactValue = formatContactDisplay(value);
     if (!contactValue) return;
 
     try {
       await navigator.clipboard.writeText(contactValue);
-      setCopiedContact(contactValue);
+      setCopiedRowId(assignmentId);
       setMessage(`Copied ${contactValue}`);
-      window.setTimeout(() => {
-        setCopiedContact((current) => (current === contactValue ? '' : current));
-      }, 1800);
     } catch {
       setMessage('Could not copy contact number');
     }
@@ -422,19 +491,35 @@ const AgentQueuePage = () => {
             <tbody className="divide-y divide-slate-100 bg-white">
               {visibleAssignments.map((assignment) => {
                 const lead = assignment.lead || {};
-                const remarks = assignment.remarkConfig || DEFAULT_REMARK_CONFIG;
+                const remarks = assignment.remarkConfig || persistedRemarkConfig || DEFAULT_REMARK_CONFIG;
+                const isCopiedRow = copiedRowId === assignment._id;
+                const isCalledRow = isCalledAssignment(assignment);
                 return (
-                  <tr key={assignment._id}>
-                    <td className="sticky left-0 z-20 border-r border-slate-200 bg-white px-3 py-2 font-medium text-slate-900 shadow-[6px_0_8px_-8px_rgba(15,23,42,0.28)]">
+                  <tr
+                    key={assignment._id}
+                    className={
+                      isCopiedRow
+                        ? 'bg-amber-50 ring-1 ring-inset ring-amber-200'
+                        : isCalledRow
+                          ? 'bg-emerald-50/40'
+                          : ''
+                    }
+                  >
+                    <td className={`sticky left-0 z-20 border-r border-slate-300 px-3 py-2 font-medium text-slate-900 shadow-[8px_0_12px_-10px_rgba(15,23,42,0.34)] ${isCopiedRow ? 'bg-amber-50' : isCalledRow ? 'bg-emerald-50' : 'bg-white'}`}>
                       <button
                         type="button"
-                        onClick={() => handleCopyContact(lead.rawData?.[contactHeader] || lead.contactNumber)}
-                        className="rounded px-1 py-0.5 text-left text-indigo-700 hover:bg-indigo-50 hover:text-indigo-900"
+                        onClick={() => handleCopyContact(assignment._id, lead.rawData?.[contactHeader] || lead.contactNumber)}
+                        className="flex items-center gap-2 rounded px-1 py-0.5 text-left text-indigo-700 hover:bg-indigo-50 hover:text-indigo-900"
                       >
+                        <span
+                          className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full text-[11px] font-bold ${
+                            isCalledRow ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-500'
+                          }`}
+                        >
+                          {isCalledRow ? '✓' : '•'}
+                        </span>
                         {formatContactDisplay(lead.rawData?.[contactHeader] || lead.contactNumber)}
-                        {copiedContact === formatContactDisplay(lead.rawData?.[contactHeader] || lead.contactNumber)
-                          ? ' copied'
-                          : ''}
+                        {isCopiedRow ? <span className="text-xs font-semibold uppercase tracking-wide text-amber-700">Copied</span> : null}
                       </button>
                     </td>
                     <td className="px-3 py-2 text-slate-700">{assignment.product?.toUpperCase() || '—'}</td>
@@ -463,19 +548,19 @@ const AgentQueuePage = () => {
                       </div>
                     </td>
                     <td className="px-3 py-2">
-                      <select disabled={isManagedView} value={assignment.callingRemark || ''} onChange={(e) => handleFieldChange(assignment._id, 'callingRemark', e.target.value)} className="w-[180px] rounded-lg border border-slate-300 px-2 py-1 disabled:bg-slate-50 disabled:text-slate-500">
+                      <select disabled={isManagedView} value={assignment.callingRemark || ''} onChange={(e) => handleFieldChange(assignment._id, 'callingRemark', e.target.value)} className={`w-[180px] rounded-lg border px-2 py-1 font-medium disabled:bg-slate-50 disabled:text-slate-500 ${getRemarkValueClasses('callingRemark', assignment.callingRemark)}`}>
                         <option value="">Select</option>
                         {remarks.callingRemarks.map((remark) => <option key={remark} value={remark}>{remark}</option>)}
                       </select>
                     </td>
                     <td className="px-3 py-2">
-                      <select disabled={isManagedView} value={assignment.interestedRemark || ''} onChange={(e) => handleFieldChange(assignment._id, 'interestedRemark', e.target.value)} className="w-[180px] rounded-lg border border-slate-300 px-2 py-1 disabled:bg-slate-50 disabled:text-slate-500">
+                      <select disabled={isManagedView} value={assignment.interestedRemark || ''} onChange={(e) => handleFieldChange(assignment._id, 'interestedRemark', e.target.value)} className={`w-[180px] rounded-lg border px-2 py-1 font-medium disabled:bg-slate-50 disabled:text-slate-500 ${getRemarkValueClasses('interestedRemark', assignment.interestedRemark)}`}>
                         <option value="">Select</option>
                         {remarks.interestedRemarks.map((remark) => <option key={remark} value={remark}>{remark}</option>)}
                       </select>
                     </td>
                     <td className="px-3 py-2">
-                      <select disabled={isManagedView} value={assignment.notInterestedRemark || ''} onChange={(e) => handleFieldChange(assignment._id, 'notInterestedRemark', e.target.value)} className="w-[200px] rounded-lg border border-slate-300 px-2 py-1 disabled:bg-slate-50 disabled:text-slate-500">
+                      <select disabled={isManagedView} value={assignment.notInterestedRemark || ''} onChange={(e) => handleFieldChange(assignment._id, 'notInterestedRemark', e.target.value)} className={`w-[200px] rounded-lg border px-2 py-1 font-medium disabled:bg-slate-50 disabled:text-slate-500 ${getRemarkValueClasses('notInterestedRemark', assignment.notInterestedRemark)}`}>
                         <option value="">Select</option>
                         {remarks.notInterestedRemarks.map((remark) => <option key={remark} value={remark}>{remark}</option>)}
                       </select>

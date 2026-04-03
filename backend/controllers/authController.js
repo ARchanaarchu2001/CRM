@@ -112,14 +112,11 @@ export const refreshAccessToken = asyncHandler(async (req, res) => {
     throw new Error('Forbidden - Invalid or deactivated user');
   }
 
-  // Rotate refresh token
+  // Keep the same refresh token during normal refreshes.
+  // Rotating it on every request can cause accidental logouts when multiple
+  // refresh requests overlap or the app is open in more than one tab.
   const newAccessToken = user.generateAccessToken();
-  const newRefreshToken = user.generateRefreshToken();
-
-  user.refreshToken = newRefreshToken;
-  await user.save({ validateBeforeSave: false });
-
-  res.cookie('refreshToken', newRefreshToken, getRefreshTokenCookieOptions());
+  res.cookie('refreshToken', refreshToken, getRefreshTokenCookieOptions());
 
   res.status(200).json({
     accessToken: newAccessToken,

@@ -322,17 +322,17 @@ const AgentDashboard = () => {
           </Link>
           <Link
             to={isManagedView ? `${managedBasePath}/queue/follow_up` : '/agent-queue/follow_up'}
-            className={`rounded-2xl border border-yellow-200 bg-yellow-50 p-5 shadow-sm ${isManagedView ? 'hover:bg-yellow-100' : 'hover:bg-yellow-100'}`}
+            className={`rounded-2xl border border-amber-200 bg-amber-50 p-5 shadow-sm ${isManagedView ? 'hover:bg-amber-100' : 'hover:bg-amber-100'}`}
           >
-            <div className="text-sm font-medium text-yellow-900">Follow Up</div>
-            <div className="mt-2 text-3xl font-bold text-yellow-800">{queueSummary.followUp}</div>
+            <div className="text-sm font-medium text-amber-950">Follow Up</div>
+            <div className="mt-2 text-3xl font-bold text-amber-800">{queueSummary.followUp}</div>
           </Link>
           <Link
             to={isManagedView ? `${managedBasePath}/queue/callback` : '/agent-queue/callback'}
-            className={`rounded-2xl border border-orange-200 bg-orange-50 p-5 shadow-sm ${isManagedView ? 'hover:bg-orange-100' : 'hover:bg-orange-100'}`}
+            className={`rounded-2xl border border-sky-200 bg-sky-50 p-5 shadow-sm ${isManagedView ? 'hover:bg-sky-100' : 'hover:bg-sky-100'}`}
           >
-            <div className="text-sm font-medium text-orange-900">Callback</div>
-            <div className="mt-2 text-3xl font-bold text-orange-800">{queueSummary.callback}</div>
+            <div className="text-sm font-medium text-sky-950">Callback</div>
+            <div className="mt-2 text-3xl font-bold text-sky-800">{queueSummary.callback}</div>
           </Link>
           <Link
             to={isManagedView ? `${managedBasePath}/queue/interested` : '/agent-queue/interested'}
