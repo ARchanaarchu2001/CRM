@@ -73,14 +73,15 @@ const EditUserProfileModal = ({
     setFileError('');
   };
 
-  const handleSubmit = () => {
-    onSubmit?.({
-      fullName: formData.fullName.trim(),
-      email: formData.email.trim(),
-      password: formData.password.trim(),
-      profilePhotoFile,
-    });
-  };
+  const handleSubmit = (e) => {
+  e.preventDefault();   // ✅ IMPORTANT
+  onSubmit?.({
+    fullName: formData.fullName.trim(),
+    email: formData.email.trim(),
+    password: formData.password.trim(),
+    profilePhotoFile,
+  });
+};
 
   const modalContent = (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 px-4 py-6">
@@ -154,7 +155,7 @@ const EditUserProfileModal = ({
               <span className="text-xs text-slate-500">Enter a new password only when you want to update it.</span>
             </label>
 
-            <div className="flex flex-col gap-1 text-sm text-slate-700">
+            <div className="flex flex-col gap-2 text-sm text-slate-700">
               <label htmlFor={photoInputId} className="font-medium">
                 Profile Photo
               </label>
@@ -164,8 +165,20 @@ const EditUserProfileModal = ({
                 type="file"
                 accept={PROFILE_PHOTO_ACCEPT}
                 onChange={handleFileChange}
-                className="rounded-xl border border-slate-300 px-4 py-2.5 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100 file:mr-4 file:rounded-full file:border-0 file:bg-indigo-50 file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-indigo-700"
+                className="sr-only"
               />
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="rounded-xl border border-indigo-300 bg-indigo-50 px-4 py-2.5 text-sm font-semibold text-indigo-700 hover:bg-indigo-100"
+                >
+                  Choose Photo
+                </button>
+                <span className="text-sm text-slate-500">
+                  {profilePhotoFile ? profilePhotoFile.name : 'No file selected'}
+                </span>
+              </div>
               <span className="text-xs text-slate-500">Uploading a photo is optional. Supported formats: JPG, PNG, WEBP, HEIC, HEIF up to 5 MB.</span>
               {fileError ? <span className="text-xs font-medium text-rose-600">{fileError}</span> : null}
             </div>

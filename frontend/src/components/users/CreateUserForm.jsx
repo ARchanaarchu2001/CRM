@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { createUserByAdmin, resetState } from '../../features/users/userManagementSlice';
 import { fetchTeams } from '../../api/dashboard.js';
+import { PROFILE_PHOTO_ACCEPT, validateProfilePhotoFile } from '../../utils/profilePhoto.js';
 
 const ROLES = [
   { value: 'data_analyst', label: 'Data Analyst' },
@@ -32,6 +33,8 @@ const CreateUserForm = () => {
   const [teams, setTeams] = useState([]);
   const [teamsLoading, setTeamsLoading] = useState(false);
   const [teamError, setTeamError] = useState('');
+  const [photoError, setPhotoError] = useState('');
+  const photoInputRef = useRef(null);
 
   useEffect(() => {
     if (isSuccess) {
@@ -46,7 +49,10 @@ const CreateUserForm = () => {
       setProfilePhoto(null);
       setPhotoPreview(null);
       setShowPassword(false);
-      document.getElementById('profilePhotoInput').value = '';
+      setPhotoError('');
+      if (photoInputRef.current) {
+        photoInputRef.current.value = '';
+      }
       
       setTimeout(() => {
         dispatch(resetState());
@@ -91,17 +97,32 @@ const CreateUserForm = () => {
   };
 
   const handleFileChange = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      setProfilePhoto(file);
-      setPhotoPreview(URL.createObjectURL(file));
+    const file = e.target.files?.[0];
+    if (!file) {
+      return;
     }
+
+    const validationMessage = validateProfilePhotoFile(file);
+    if (validationMessage) {
+      setProfilePhoto(null);
+      setPhotoPreview(null);
+      setPhotoError(validationMessage);
+      e.target.value = '';
+      return;
+    }
+
+    setProfilePhoto(file);
+    setPhotoPreview(URL.createObjectURL(file));
+    setPhotoError('');
   };
 
   const clearPreview = () => {
     setProfilePhoto(null);
     setPhotoPreview(null);
-    document.getElementById('profilePhotoInput').value = '';
+    setPhotoError('');
+    if (photoInputRef.current) {
+      photoInputRef.current.value = '';
+    }
   };
 
   const handleSubmit = (e) => {
@@ -279,9 +300,10 @@ const CreateUserForm = () => {
           <div className="flex items-center gap-4">
             
             <input
+              ref={photoInputRef}
               id="profilePhotoInput"
               type="file"
-              accept=".jpg,.jpeg,.png,.webp"
+              accept={PROFILE_PHOTO_ACCEPT}
               onChange={handleFileChange}
               className="block w-full text-sm text-slate-500 file:mr-4 file:rounded-full file:border-0 file:bg-indigo-50 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-indigo-700 hover:file:bg-indigo-100"
             />
@@ -304,6 +326,7 @@ const CreateUserForm = () => {
               </div>
             )}
           </div>
+          {photoError && <p className="text-sm font-medium text-rose-600">{photoError}</p>}
         </div>
 
         <div className="flex justify-end border-t border-slate-200 pt-6">

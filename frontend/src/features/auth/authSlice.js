@@ -156,7 +156,11 @@ const authSlice = createSlice({
       
       // Refresh Token
       .addCase(refreshToken.pending, (state) => {
-        state.status = 'loading';
+        // Keep the current UI mounted during silent refreshes triggered on focus/visibility.
+        // PersistLogin already owns the initial boot loading screen.
+        if (state.status === 'idle') {
+          state.status = 'loading';
+        }
       })
       .addCase(refreshToken.fulfilled, (state, action) => {
         state.status = 'succeeded';

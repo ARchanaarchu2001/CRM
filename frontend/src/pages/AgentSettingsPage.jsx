@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { updateDashboardUser } from '../api/dashboard.js';
 import { fetchMe } from '../features/auth/authSlice.js';
+import { PROFILE_PHOTO_ACCEPT, validateProfilePhotoFile } from '../utils/profilePhoto.js';
 
 const AgentSettingsPage = () => {
   const dispatch = useDispatch();
@@ -15,6 +16,15 @@ const AgentSettingsPage = () => {
   const handlePhotoChange = (event) => {
     const file = event.target.files?.[0];
     if (!file) {
+      return;
+    }
+
+    const validationMessage = validateProfilePhotoFile(file);
+    if (validationMessage) {
+      setProfilePhotoFile(null);
+      setError(validationMessage);
+      setMessage('');
+      event.target.value = '';
       return;
     }
 
@@ -86,7 +96,7 @@ const AgentSettingsPage = () => {
           <form onSubmit={handlePhotoSubmit} className="w-full space-y-4">
             <input
               type="file"
-              accept=".jpg,.jpeg,.png,.webp"
+              accept={PROFILE_PHOTO_ACCEPT}
               onChange={handlePhotoChange}
               className="block w-full text-sm text-slate-500 file:mr-4 file:rounded-full file:border-0 file:bg-indigo-100 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-indigo-700 hover:file:bg-indigo-200"
             />

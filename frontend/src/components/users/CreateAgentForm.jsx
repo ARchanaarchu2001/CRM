@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { createAgentByTeamLead, resetState } from '../../features/users/userManagementSlice';
+import { PROFILE_PHOTO_ACCEPT, validateProfilePhotoFile } from '../../utils/profilePhoto.js';
 
 const CreateAgentForm = () => {
   const dispatch = useDispatch();
@@ -18,6 +19,8 @@ const CreateAgentForm = () => {
   const [profilePhoto, setProfilePhoto] = useState(null);
   const [photoPreview, setPhotoPreview] = useState(null);
   const [showPassword, setShowPassword] = useState(false);
+  const [photoError, setPhotoError] = useState('');
+  const photoInputRef = useRef(null);
 
   useEffect(() => {
     if (isSuccess) {
@@ -29,7 +32,10 @@ const CreateAgentForm = () => {
       setProfilePhoto(null);
       setPhotoPreview(null);
       setShowPassword(false);
-      document.getElementById('profilePhotoInput').value = '';
+      setPhotoError('');
+      if (photoInputRef.current) {
+        photoInputRef.current.value = '';
+      }
       
       setTimeout(() => {
         dispatch(resetState());
@@ -43,17 +49,32 @@ const CreateAgentForm = () => {
   };
 
   const handleFileChange = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      setProfilePhoto(file);
-      setPhotoPreview(URL.createObjectURL(file));
+    const file = e.target.files?.[0];
+    if (!file) {
+      return;
     }
+
+    const validationMessage = validateProfilePhotoFile(file);
+    if (validationMessage) {
+      setProfilePhoto(null);
+      setPhotoPreview(null);
+      setPhotoError(validationMessage);
+      e.target.value = '';
+      return;
+    }
+
+    setProfilePhoto(file);
+    setPhotoPreview(URL.createObjectURL(file));
+    setPhotoError('');
   };
 
   const clearPreview = () => {
     setProfilePhoto(null);
     setPhotoPreview(null);
-    document.getElementById('profilePhotoInput').value = '';
+    setPhotoError('');
+    if (photoInputRef.current) {
+      photoInputRef.current.value = '';
+    }
   };
 
   const handleSubmit = (e) => {
@@ -178,9 +199,10 @@ const CreateAgentForm = () => {
           <div className="flex items-center gap-4">
             
             <input
+              ref={photoInputRef}
               id="profilePhotoInput"
               type="file"
-              accept=".jpg,.jpeg,.png,.webp"
+              accept={PROFILE_PHOTO_ACCEPT}
               onChange={handleFileChange}
               className="block w-full text-sm text-slate-500 file:mr-4 file:rounded-full file:border-0 file:bg-blue-100 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-blue-700 hover:file:bg-blue-200 cursor-pointer"
             />
@@ -203,6 +225,7 @@ const CreateAgentForm = () => {
               </div>
             )}
           </div>
+          {photoError && <p className="text-sm font-medium text-rose-600">{photoError}</p>}
         </div>
 
         <div className="flex justify-end border-t border-slate-200 pt-6">

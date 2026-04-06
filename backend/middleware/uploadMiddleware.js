@@ -26,18 +26,25 @@ const storage = multer.diskStorage({
 
 // 2. Add File Type Verification
 const fileFilter = (req, file, cb) => {
-  const allowedFileTypes = /jpeg|jpg|png|webp/;
-  
-  // Test file extension and mime type securely
-  const extname = allowedFileTypes.test(
-    path.extname(file.originalname).toLowerCase()
-  );
-  const mimetype = allowedFileTypes.test(file.mimetype);
+  const allowedExtensions = new Set(['.jpg', '.jpeg', '.png', '.webp', '.heic', '.heif']);
+  const allowedMimeTypes = new Set([
+    'image/jpeg',
+    'image/jpg',
+    'image/pjpeg',
+    'image/png',
+    'image/x-png',
+    'image/webp',
+    'image/heic',
+    'image/heif',
+  ]);
 
-  if (extname && mimetype) {
+  const extname = path.extname(file.originalname).toLowerCase();
+  const mimetype = String(file.mimetype || '').toLowerCase();
+
+  if (allowedExtensions.has(extname) && allowedMimeTypes.has(mimetype)) {
     return cb(null, true);
   } else {
-    cb(new Error('Invalid file type! Only JPG, JPEG, PNG and WEBP image formats are allowed.'), false);
+    cb(new Error('Invalid file type! Only JPG, JPEG, PNG, WEBP, HEIC and HEIF image formats are allowed.'), false);
   }
 };
 

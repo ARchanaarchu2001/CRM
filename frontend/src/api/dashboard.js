@@ -53,14 +53,7 @@ export const fetchAdminUsers = async () => {
 };
 
 export const updateDashboardUser = async (userId, payload) => {
-  const isFormData = typeof FormData !== 'undefined' && payload instanceof FormData;
-  const response = await axiosPrivate.put(`/users/${userId}`, payload, isFormData
-    ? {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      }
-    : undefined);
+  const response = await axiosPrivate.put(`/users/${userId}`, payload);
   return response.data;
 };
 
