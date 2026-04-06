@@ -35,11 +35,11 @@ const TeamComparisonTooltip = ({ active, payload, label }) => {
 
 const TeamComparisonChart = ({ data = [] }) => {
   return (
-    <section className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm">
+    <section className="rounded-[1.5rem] border border-slate-200 bg-white p-4 shadow-sm sm:rounded-[2rem] sm:p-5">
       <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Primary View</p>
-          <h3 className="mt-2 text-xl font-semibold text-slate-900">Team Comparison</h3>
+          <h3 className="mt-2 text-lg font-semibold text-slate-900 sm:text-xl">Team Comparison</h3>
           <p className="mt-1 text-sm text-slate-500">
             Compare team-level dials, submissions, activations, and pending leads for the selected range.
           </p>
@@ -49,9 +49,10 @@ const TeamComparisonChart = ({ data = [] }) => {
         </div>
       </div>
 
-      <div className="h-[24rem]">
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={data} barGap={6} barCategoryGap={20}>
+      <div className="overflow-x-auto">
+        <div className="h-[20rem] min-w-[700px] sm:h-[24rem]">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={data} barGap={6} barCategoryGap={20}>
             <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" vertical={false} />
             <XAxis
               dataKey="team"
@@ -71,8 +72,9 @@ const TeamComparisonChart = ({ data = [] }) => {
             <Bar dataKey="submissions" name="Submissions" fill="#2563eb" radius={[8, 8, 0, 0]} />
             <Bar dataKey="activations" name="Activations" fill="#059669" radius={[8, 8, 0, 0]} />
             <Bar dataKey="pendingLeads" name="Pending Leads" fill="#f59e0b" radius={[8, 8, 0, 0]} />
-          </BarChart>
-        </ResponsiveContainer>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
       </div>
     </section>
   );

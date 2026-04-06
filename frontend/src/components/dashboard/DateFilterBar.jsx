@@ -13,14 +13,14 @@ const DateFilterBar = ({ filter, onChange, isLoading = false }) => {
           </p>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          <label className="flex flex-col gap-1 text-sm text-slate-600">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 lg:min-w-[28rem] xl:min-w-[36rem]">
+          <label className="flex w-full flex-col gap-1 text-sm text-slate-600">
             <span className="font-medium text-slate-700">Range</span>
             <select
               value={filter.range}
               disabled={isLoading}
               onChange={(event) => onChange({ range: event.target.value })}
-              className="rounded-2xl border border-slate-300 bg-white px-4 py-2.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+              className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-2.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
             >
               {DASHBOARD_RANGE_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
@@ -30,25 +30,25 @@ const DateFilterBar = ({ filter, onChange, isLoading = false }) => {
             </select>
           </label>
 
-          <label className="flex flex-col gap-1 text-sm text-slate-600">
+          <label className="flex w-full flex-col gap-1 text-sm text-slate-600">
             <span className="font-medium text-slate-700">From</span>
             <input
               type="date"
               value={filter.from}
               disabled={isLoading || filter.range !== 'custom'}
               onChange={(event) => onChange({ from: event.target.value })}
-              className="rounded-2xl border border-slate-300 bg-white px-4 py-2.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200 disabled:bg-slate-100"
+              className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-2.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200 disabled:bg-slate-100"
             />
           </label>
 
-          <label className="flex flex-col gap-1 text-sm text-slate-600">
+          <label className="flex w-full flex-col gap-1 text-sm text-slate-600">
             <span className="font-medium text-slate-700">To</span>
             <input
               type="date"
               value={filter.to}
               disabled={isLoading || filter.range !== 'custom'}
               onChange={(event) => onChange({ to: event.target.value })}
-              className="rounded-2xl border border-slate-300 bg-white px-4 py-2.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200 disabled:bg-slate-100"
+              className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-2.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200 disabled:bg-slate-100"
             />
           </label>
         </div>

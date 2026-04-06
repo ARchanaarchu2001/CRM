@@ -12,14 +12,14 @@ const toneClasses = {
 
 const KpiCardGrid = ({ kpis = [] }) => {
   return (
-    <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+    <section className="grid gap-3 sm:gap-4 md:grid-cols-2 xl:grid-cols-3">
       {kpis.map((kpi) => (
         <article
           key={kpi.key}
-          className={`rounded-[2rem] border border-slate-200 border-t-4 bg-white p-5 shadow-sm ${toneClasses[kpi.key] || toneClasses.dials}`}
+          className={`rounded-[1.5rem] border border-slate-200 border-t-4 bg-white p-4 shadow-sm sm:rounded-[2rem] sm:p-5 ${toneClasses[kpi.key] || toneClasses.dials}`}
         >
           <p className="text-sm font-medium text-slate-500">{kpi.title}</p>
-          <p className="mt-4 text-4xl font-bold tracking-tight text-slate-900">{formatMetricValue(kpi.value)}</p>
+          <p className="mt-3 text-3xl font-bold tracking-tight text-slate-900 sm:mt-4 sm:text-4xl">{formatMetricValue(kpi.value)}</p>
         </article>
       ))}
     </section>

@@ -20,9 +20,9 @@ const AgentMetricBarChart = ({ title, description, data = [], metricKey, color }
       </div>
 
       <div className="overflow-x-auto">
-        <div style={{ height: chartHeight, minWidth: '320px' }}>
+        <div style={{ height: chartHeight, minWidth: '340px' }} className="sm:min-w-0">
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={data} layout="vertical" margin={{ top: 8, right: 20, left: 10, bottom: 8 }}>
+            <BarChart data={data} layout="vertical" margin={{ top: 8, right: 20, left: 4, bottom: 8 }}>
               <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" horizontal={false} />
               <XAxis
                 type="number"
@@ -34,7 +34,7 @@ const AgentMetricBarChart = ({ title, description, data = [], metricKey, color }
               <YAxis
                 type="category"
                 dataKey="agentName"
-                width={100}
+                width={88}
                 tick={{ fill: '#334155', fontSize: 11 }}
                 tickLine={false}
                 axisLine={false}
