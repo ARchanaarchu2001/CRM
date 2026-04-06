@@ -7,14 +7,15 @@ import { getRefreshTokenCookieOptions, getClearCookieOptions } from '../utils/co
 // @route   POST /api/auth/login
 // @access  Public
 export const loginUser = asyncHandler(async (req, res) => {
-  const { email, password } = req.body;
+  const normalizedEmail = String(req.body.email || '').trim().toLowerCase();
+  const { password } = req.body;
 
   // Check for user email and explicitly select password
-  const user = await User.findOne({ email }).select('+password');
+  const user = await User.findOne({ email: normalizedEmail }).select('+password');
 
   if (!user) {
     res.status(401);
-    throw new Error('Invalid email or password');
+    throw new Error('No account was found for this email address.');
   }
 
   // Check if active and not blocked
@@ -33,7 +34,7 @@ export const loginUser = asyncHandler(async (req, res) => {
   
   if (!isMatch) {
     res.status(401);
-    throw new Error('Invalid email or password');
+    throw new Error('The password you entered is incorrect.');
   }
 
   // Generate tokens
