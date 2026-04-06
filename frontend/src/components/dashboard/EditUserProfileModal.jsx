@@ -1,5 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { FiEye, FiEyeOff } from 'react-icons/fi';
+import { PROFILE_PHOTO_ACCEPT, validateProfilePhotoFile } from '../../utils/profilePhoto.js';
 
 const EditUserProfileModal = ({
   isOpen,
@@ -16,6 +18,8 @@ const EditUserProfileModal = ({
   const [profilePhotoFile, setProfilePhotoFile] = useState(null);
   const [photoPreview, setPhotoPreview] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [fileError, setFileError] = useState('');
+  const fileInputRef = useRef(null);
 
   useEffect(() => {
     if (!isOpen || !user) {
@@ -30,11 +34,17 @@ const EditUserProfileModal = ({
     setProfilePhotoFile(null);
     setPhotoPreview(user.profilePhoto ? `/uploads/${user.profilePhoto}` : '');
     setShowPassword(false);
+    setFileError('');
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
   }, [isOpen, user]);
 
   if (!isOpen || !user) {
     return null;
   }
+
+  const photoInputId = `edit-profile-photo-${user._id || 'user'}`;
 
   const handleChange = (event) => {
     const { name, value } = event.target;
@@ -48,12 +58,22 @@ const EditUserProfileModal = ({
       return;
     }
 
+    const validationMessage = validateProfilePhotoFile(file);
+    if (validationMessage) {
+      setProfilePhotoFile(null);
+      setFileError(validationMessage);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+      return;
+    }
+
     setProfilePhotoFile(file);
     setPhotoPreview(URL.createObjectURL(file));
+    setFileError('');
   };
 
-  const handleSubmit = (event) => {
-    event.preventDefault();
+  const handleSubmit = () => {
     onSubmit?.({
       fullName: formData.fullName.trim(),
       email: formData.email.trim(),
@@ -62,9 +82,12 @@ const EditUserProfileModal = ({
     });
   };
 
-  return (
+  const modalContent = (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 px-4 py-6">
-      <div className="w-full max-w-xl rounded-[2rem] border border-slate-200 bg-white p-6 shadow-2xl">
+      <div
+        className="w-full max-w-xl rounded-[2rem] border border-slate-200 bg-white p-6 shadow-2xl"
+        onClick={(event) => event.stopPropagation()}
+      >
         <div className="flex items-start justify-between gap-4 border-b border-slate-200 pb-4">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Profile Edit</p>
@@ -80,7 +103,7 @@ const EditUserProfileModal = ({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+        <div className="mt-6 space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="flex flex-col gap-1 text-sm text-slate-700">
               <span className="font-medium">Full Name</span>
@@ -131,16 +154,21 @@ const EditUserProfileModal = ({
               <span className="text-xs text-slate-500">Enter a new password only when you want to update it.</span>
             </label>
 
-            <label className="flex flex-col gap-1 text-sm text-slate-700">
-              <span className="font-medium">Profile Photo</span>
+            <div className="flex flex-col gap-1 text-sm text-slate-700">
+              <label htmlFor={photoInputId} className="font-medium">
+                Profile Photo
+              </label>
               <input
+                id={photoInputId}
+                ref={fileInputRef}
                 type="file"
-                accept=".jpg,.jpeg,.png,.webp"
+                accept={PROFILE_PHOTO_ACCEPT}
                 onChange={handleFileChange}
                 className="rounded-xl border border-slate-300 px-4 py-2.5 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100 file:mr-4 file:rounded-full file:border-0 file:bg-indigo-50 file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-indigo-700"
               />
-              <span className="text-xs text-slate-500">Uploading a photo is optional.</span>
-            </label>
+              <span className="text-xs text-slate-500">Uploading a photo is optional. Supported formats: JPG, PNG, WEBP, HEIC, HEIF up to 5 MB.</span>
+              {fileError ? <span className="text-xs font-medium text-rose-600">{fileError}</span> : null}
+            </div>
           </div>
 
           {photoPreview && (
@@ -170,17 +198,23 @@ const EditUserProfileModal = ({
               Cancel
             </button>
             <button
-              type="submit"
+              type="button"
+              onClick={handleSubmit}
               disabled={isSubmitting}
               className="rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {isSubmitting ? 'Saving...' : 'Save Changes'}
             </button>
           </div>
-        </form>
+        </div>
       </div>
     </div>
   );
+
+  return createPortal(modalContent, document.body);
 };
 
 export default EditUserProfileModal;
+
+
+
