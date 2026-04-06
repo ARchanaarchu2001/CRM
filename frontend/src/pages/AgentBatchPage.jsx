@@ -88,11 +88,11 @@ const normalizeSortValue = (value) => String(value || '').toLowerCase();
 const HEADER_ROW_STICKY_CLASS = 'sticky top-0 z-20 bg-slate-100';
 const FILTER_ROW_STICKY_CLASS = 'sticky top-[36px] z-20 bg-white';
 const STICKY_HEADER_CLASS =
-  'sticky left-0 z-50 border-r border-slate-300 bg-slate-100 px-2 py-2 text-left text-[12px] font-semibold text-slate-700 shadow-[8px_0_12px_-10px_rgba(15,23,42,0.38)]';
+  'sticky left-0 z-50 border-r border-black bg-slate-100 px-2 py-2 text-left text-[12px] font-semibold text-slate-700 shadow-[8px_0_12px_-10px_rgba(15,23,42,0.38)]';
 const STICKY_FILTER_CLASS =
-  'sticky left-0 z-40 border-r border-slate-300 bg-white px-2 py-1.5 shadow-[8px_0_12px_-10px_rgba(15,23,42,0.3)]';
+  'sticky left-0 z-40 h-9 border-r border-black bg-white px-2 py-1 align-middle shadow-[8px_0_12px_-10px_rgba(15,23,42,0.3)]';
 const STICKY_CELL_CLASS =
-  'sticky left-0 z-30 border-r border-slate-300 bg-white shadow-[8px_0_12px_-10px_rgba(15,23,42,0.34)]';
+  'sticky left-0 z-30 border-r border-black bg-white shadow-[8px_0_12px_-10px_rgba(15,23,42,0.34)]';
 const DEFAULT_FIXED_COLUMN_KEYS = ['contact'];
 const DEFAULT_COLUMN_COLORS = {
   callingRemark: 'amber',
@@ -147,6 +147,40 @@ const getRemarkValueClasses = (columnKey, value) => {
   }
 
   return 'bg-white text-slate-700';
+};
+
+const getRemarkRowBackground = (assignment) => {
+  const callingRemark = String(assignment.callingRemark || '').trim().toLowerCase();
+
+  if (callingRemark === 'interested') {
+    return 'bg-emerald-200';
+  }
+
+  if (callingRemark === 'not interested' || callingRemark === 'dncr') {
+    return 'bg-rose-200';
+  }
+
+  if (callingRemark === 'call back') {
+    return 'bg-sky-200';
+  }
+
+  if (callingRemark === 'follow up') {
+    return 'bg-amber-200';
+  }
+
+  if (callingRemark === 'order submitted' || callingRemark === 'activated') {
+    return 'bg-violet-200';
+  }
+
+  if (assignment.interestedRemark) {
+    return 'bg-emerald-200';
+  }
+
+  if (assignment.notInterestedRemark) {
+    return 'bg-rose-200';
+  }
+
+  return '';
 };
 
 const AgentBatchPage = () => {
@@ -1547,7 +1581,7 @@ const AgentBatchPage = () => {
           className="min-h-0 flex-1 overflow-y-auto overflow-x-auto [&::-webkit-scrollbar]:hidden"
           style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
         >
-          <table ref={tableElementRef} className="min-w-[2200px] divide-y divide-slate-200 text-[12px] leading-4">
+          <table ref={tableElementRef} className="min-w-[2200px] border-separate border-spacing-0 text-[12px] font-medium leading-4 text-black">
             <thead>
               <tr>
                 {orderedDisplayColumnKeys.map((columnKey) => (
@@ -1555,7 +1589,7 @@ const AgentBatchPage = () => {
                     key={`header-${columnKey}`}
                     className={getPinnedClasses(
                       columnKey,
-                      'relative sticky top-0 whitespace-nowrap align-top border-r border-slate-200 px-2 py-1.5 text-left text-[12px] font-semibold overflow-visible',
+                      'relative sticky top-0 whitespace-nowrap align-top border-b border-r border-black px-2 py-2 text-left text-[12px] font-semibold overflow-visible',
                       getHeaderBgClass(columnKey),
                       columnKey === 'contact' ? 'z-50' : 'z-40'
                     )}
@@ -1588,56 +1622,57 @@ const AgentBatchPage = () => {
                     key={`filter-${columnKey}`}
                     className={getPinnedClasses(
                       columnKey,
-                      'sticky top-[36px] border-r border-slate-200 px-2 py-1.5',
+                      'sticky top-[36px] h-9 align-middle border-b border-r border-black px-2 py-1',
                       getFilterBgClass(columnKey),
                       columnKey === 'contact' ? 'z-40' : 'z-30'
                     )}
                     style={getColumnStyle(columnKey)}
                   >
                     {columnKey === 'contact' ? (
-                      <input type="text" value={columnFilters.contact || ''} onChange={(event) => updateColumnFilter('contact', event.target.value)} placeholder="Search" className="w-full min-w-0 rounded-md border border-slate-300 px-2 py-0.5 text-[11px]" />
+                      <input type="text" value={columnFilters.contact || ''} onChange={(event) => updateColumnFilter('contact', event.target.value)} placeholder="Search" className="h-7 w-full min-w-0 rounded-md border border-slate-300 px-2 py-0 text-[11px]" />
                     ) : columnKey === 'product' ? (
-                      <input type="text" value={columnFilters.product || ''} onChange={(event) => updateColumnFilter('product', event.target.value)} placeholder="Filter" className="w-full min-w-0 rounded-md border border-slate-300 px-2 py-0.5 text-[11px]" />
+                      <input type="text" value={columnFilters.product || ''} onChange={(event) => updateColumnFilter('product', event.target.value)} placeholder="Filter" className="h-7 w-full min-w-0 rounded-md border border-slate-300 px-2 py-0 text-[11px]" />
                     ) : columnKey.startsWith('raw:') ? (
-                      <input type="text" value={columnFilters[columnKey] || ''} onChange={(event) => updateColumnFilter(columnKey, event.target.value)} placeholder="Search" className="w-full min-w-0 rounded-md border border-slate-300 px-2 py-0.5 text-[11px]" />
+                      <input type="text" value={columnFilters[columnKey] || ''} onChange={(event) => updateColumnFilter(columnKey, event.target.value)} placeholder="Search" className="h-7 w-full min-w-0 rounded-md border border-slate-300 px-2 py-0 text-[11px]" />
                     ) : columnKey === 'contactabilityStatus' ? (
-                      <select value={columnFilters.contactabilityStatus || ''} onChange={(event) => updateColumnFilter('contactabilityStatus', event.target.value)} className="w-full min-w-0 rounded-md border border-slate-300 px-2 py-0.5 text-[11px]"><option value="">All</option>{(activeRemarkConfig.contactabilityStatuses || []).map((status) => <option key={status} value={status}>{status}</option>)}</select>
+                      <select value={columnFilters.contactabilityStatus || ''} onChange={(event) => updateColumnFilter('contactabilityStatus', event.target.value)} className="h-7 w-full min-w-0 rounded-md border border-slate-300 px-2 py-0 text-[11px]"><option value="">All</option>{(activeRemarkConfig.contactabilityStatuses || []).map((status) => <option key={status} value={status}>{status}</option>)}</select>
                     ) : columnKey === 'callingRemark' ? (
-                      <select value={columnFilters.callingRemark || ''} onChange={(event) => updateColumnFilter('callingRemark', event.target.value)} className="w-full min-w-0 rounded-md border border-slate-300 px-2 py-0.5 text-[11px]"><option value="">All</option>{activeRemarkConfig.callingRemarks.map((remark) => <option key={remark} value={remark}>{remark}</option>)}</select>
+                      <select value={columnFilters.callingRemark || ''} onChange={(event) => updateColumnFilter('callingRemark', event.target.value)} className="h-7 w-full min-w-0 rounded-md border border-slate-300 px-2 py-0 text-[11px]"><option value="">All</option>{activeRemarkConfig.callingRemarks.map((remark) => <option key={remark} value={remark}>{remark}</option>)}</select>
                     ) : columnKey === 'interestedRemark' ? (
-                      <select value={columnFilters.interestedRemark || ''} onChange={(event) => updateColumnFilter('interestedRemark', event.target.value)} className="w-full min-w-0 rounded-md border border-slate-300 px-2 py-0.5 text-[11px]"><option value="">All</option>{activeRemarkConfig.interestedRemarks.map((remark) => <option key={remark} value={remark}>{remark}</option>)}</select>
+                      <select value={columnFilters.interestedRemark || ''} onChange={(event) => updateColumnFilter('interestedRemark', event.target.value)} className="h-7 w-full min-w-0 rounded-md border border-slate-300 px-2 py-0 text-[11px]"><option value="">All</option>{activeRemarkConfig.interestedRemarks.map((remark) => <option key={remark} value={remark}>{remark}</option>)}</select>
                     ) : columnKey === 'notInterestedRemark' ? (
-                      <select value={columnFilters.notInterestedRemark || ''} onChange={(event) => updateColumnFilter('notInterestedRemark', event.target.value)} className="w-full min-w-0 rounded-md border border-slate-300 px-2 py-0.5 text-[11px]"><option value="">All</option>{activeRemarkConfig.notInterestedRemarks.map((remark) => <option key={remark} value={remark}>{remark}</option>)}</select>
+                      <select value={columnFilters.notInterestedRemark || ''} onChange={(event) => updateColumnFilter('notInterestedRemark', event.target.value)} className="h-7 w-full min-w-0 rounded-md border border-slate-300 px-2 py-0 text-[11px]"><option value="">All</option>{activeRemarkConfig.notInterestedRemarks.map((remark) => <option key={remark} value={remark}>{remark}</option>)}</select>
                     ) : columnKey === 'status' ? (
-                      <select value={columnFilters.status || ''} onChange={(event) => updateColumnFilter('status', event.target.value)} className="w-full min-w-0 rounded-md border border-slate-300 px-2 py-0.5 text-[11px]"><option value="">All</option><option value="submitted">Submitted</option><option value="activated">Activated</option></select>
+                      <select value={columnFilters.status || ''} onChange={(event) => updateColumnFilter('status', event.target.value)} className="h-7 w-full min-w-0 rounded-md border border-slate-300 px-2 py-0 text-[11px]"><option value="">All</option><option value="submitted">Submitted</option><option value="activated">Activated</option></select>
                     ) : null}
                   </th>
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 bg-white">
+            <tbody className="bg-white">
               {filteredAssignments.map((assignment, index) => {
                 const lead = assignment.lead || {};
                 const remarks = assignment.remarkConfig || DEFAULT_REMARK_CONFIG;
                 const isCopiedRow = copiedRowId === assignment._id;
                 const isCalledRow = isCalledAssignment(assignment);
                 const baseRowBackground = index % 2 === 0 ? 'bg-white' : 'bg-slate-50/60';
+                const remarkRowBackground = getRemarkRowBackground(assignment);
                 const accentRowBackground = isCopiedRow
-                  ? 'bg-amber-50'
-                  : isCalledRow
-                    ? 'bg-emerald-50/40'
-                    : baseRowBackground;
+                  ? 'bg-amber-300'
+                  : remarkRowBackground || (isCalledRow
+                    ? 'bg-emerald-100'
+                    : baseRowBackground);
 
                 return (
                   <tr key={assignment._id} className={`${accentRowBackground} ${isCopiedRow ? 'ring-1 ring-inset ring-amber-200' : ''}`}>
                     {orderedDisplayColumnKeys.map((columnKey) => {
-                      const baseBg = getCellBgClass(columnKey, isCopiedRow ? 'bg-amber-50' : isCalledRow ? 'bg-emerald-50' : index % 2 === 0 ? 'bg-white' : 'bg-slate-50');
-                      const cellClassName = getPinnedClasses(columnKey, columnKey === 'contact' ? 'border-r border-slate-200 px-2 py-1 font-medium text-slate-900' : 'border-r border-slate-200 px-2 py-1', baseBg, columnKey === 'contact' ? 'z-30' : 'z-20');
+                      const baseBg = getCellBgClass(columnKey, isCopiedRow ? 'bg-amber-300' : remarkRowBackground || (isCalledRow ? 'bg-emerald-100' : index % 2 === 0 ? 'bg-white' : 'bg-slate-50'));
+                      const cellClassName = getPinnedClasses(columnKey, columnKey === 'contact' ? 'h-9 border-b border-r border-black px-2 py-1.5 font-medium text-black' : 'h-9 border-b border-r border-black px-2 py-1.5 text-black', baseBg, columnKey === 'contact' ? 'z-30' : 'z-20');
 
                       if (columnKey === 'contact') {
                         return (
                           <td key={`${assignment._id}-${columnKey}`} className={cellClassName} style={getColumnStyle(columnKey)}>
-                            <button type="button" onClick={() => handleCopyContact(assignment._id, lead.rawData?.[contactHeader] || lead.contactNumber)} className="flex items-center gap-2 rounded px-1 py-0.5 text-left text-indigo-700 hover:bg-indigo-50 hover:text-indigo-900" title="Click to copy number">
+                            <button type="button" onClick={() => handleCopyContact(assignment._id, lead.rawData?.[contactHeader] || lead.contactNumber)} className="flex items-center gap-2 rounded px-1 py-0.5 text-left font-medium text-black hover:bg-indigo-50" title="Click to copy number">
                               <span className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full text-[11px] font-bold ${isCalledAssignment(assignment) ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-500'}`}>{isCalledAssignment(assignment) ? '✓' : '•'}</span>
                               {formatContactDisplay(lead.rawData?.[contactHeader] || lead.contactNumber)}
                               {copiedRowId === assignment._id ? <span className="text-xs font-semibold uppercase tracking-wide text-amber-700">Copied</span> : null}
@@ -1647,12 +1682,12 @@ const AgentBatchPage = () => {
                       }
 
                       if (columnKey === 'product') {
-                        return <td key={`${assignment._id}-${columnKey}`} className={`${cellClassName} text-slate-700`} style={getColumnStyle(columnKey)}><div className="overflow-hidden whitespace-normal break-words [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:3]">{assignment.product?.toUpperCase() || '-'}</div></td>;
+                        return <td key={`${assignment._id}-${columnKey}`} className={cellClassName} style={getColumnStyle(columnKey)}><div className="overflow-hidden whitespace-normal break-words [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:3]">{assignment.product?.toUpperCase() || '-'}</div></td>;
                       }
 
                       if (columnKey.startsWith('raw:')) {
                         const header = columnKey.replace('raw:', '');
-                        return <td key={`${assignment._id}-${columnKey}`} className={`${cellClassName} text-slate-600`} style={getColumnStyle(columnKey)}><div className="overflow-hidden whitespace-normal break-words [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:3]">{lead.rawData?.[header] || '-'}</div></td>;
+                        return <td key={`${assignment._id}-${columnKey}`} className={cellClassName} style={getColumnStyle(columnKey)}><div className="overflow-hidden whitespace-normal break-words [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:3]">{lead.rawData?.[header] || '-'}</div></td>;
                       }
 
                       if (columnKey === 'contactabilityStatus') {
@@ -1739,7 +1774,7 @@ const AgentBatchPage = () => {
                       }
 
                       if (columnKey === 'saveState') {
-                        return <td key={`${assignment._id}-${columnKey}`} className="border-r border-slate-200 px-3 py-1.5 text-xs text-slate-500" style={getColumnStyle(columnKey)}>{!isManagedView && saveState[assignment._id] === 'saving' && 'Saving...'}{!isManagedView && saveState[assignment._id] === 'saved' && 'Saved'}{!isManagedView && saveState[assignment._id] === 'error' && 'Error'}</td>;
+                        return <td key={`${assignment._id}-${columnKey}`} className="h-9 border-b border-r border-black px-3 py-1.5 text-xs font-medium text-black" style={getColumnStyle(columnKey)}>{!isManagedView && saveState[assignment._id] === 'saving' && 'Saving...'}{!isManagedView && saveState[assignment._id] === 'saved' && 'Saved'}{!isManagedView && saveState[assignment._id] === 'error' && 'Error'}</td>;
                       }
 
                       return <td key={`${assignment._id}-${columnKey}`} className={cellClassName} style={getColumnStyle(columnKey)}>-</td>;
