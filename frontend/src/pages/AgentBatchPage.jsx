@@ -86,11 +86,11 @@ const findDefaultNameColumn = (headers = []) =>
 
 const normalizeSortValue = (value) => String(value || '').toLowerCase();
 const HEADER_ROW_STICKY_CLASS = 'sticky top-0 z-20 bg-slate-100';
-const FILTER_ROW_STICKY_CLASS = 'sticky top-[41px] z-20 bg-white';
+const FILTER_ROW_STICKY_CLASS = 'sticky top-[36px] z-20 bg-white';
 const STICKY_HEADER_CLASS =
-  'sticky left-0 z-50 border-r border-slate-300 bg-slate-100 px-3 py-3 text-left font-semibold text-slate-700 shadow-[8px_0_12px_-10px_rgba(15,23,42,0.38)]';
+  'sticky left-0 z-50 border-r border-slate-300 bg-slate-100 px-2 py-2 text-left text-[12px] font-semibold text-slate-700 shadow-[8px_0_12px_-10px_rgba(15,23,42,0.38)]';
 const STICKY_FILTER_CLASS =
-  'sticky left-0 z-40 border-r border-slate-300 bg-white px-3 py-2 shadow-[8px_0_12px_-10px_rgba(15,23,42,0.3)]';
+  'sticky left-0 z-40 border-r border-slate-300 bg-white px-2 py-1.5 shadow-[8px_0_12px_-10px_rgba(15,23,42,0.3)]';
 const STICKY_CELL_CLASS =
   'sticky left-0 z-30 border-r border-slate-300 bg-white shadow-[8px_0_12px_-10px_rgba(15,23,42,0.34)]';
 const DEFAULT_FIXED_COLUMN_KEYS = ['contact'];
@@ -106,7 +106,7 @@ const COLOR_OPTIONS = [
   { key: 'sky', label: 'Blue', header: 'bg-sky-100 text-sky-900', filter: 'bg-sky-50', cell: 'bg-sky-50/85' },
   { key: 'rose', label: 'Rose', header: 'bg-rose-100 text-rose-900', filter: 'bg-rose-50', cell: 'bg-rose-50/85' },
 ];
-const MIN_COLUMN_WIDTH = 90;
+const MIN_COLUMN_WIDTH = 28;
 const DEFAULT_COLUMN_WIDTHS = {
   contact: 220,
   product: 120,
@@ -176,12 +176,17 @@ const AgentBatchPage = () => {
   const [columnColors, setColumnColors] = useState(DEFAULT_COLUMN_COLORS);
   const [columnWidths, setColumnWidths] = useState(DEFAULT_COLUMN_WIDTHS);
   const [hiddenColumnKeys, setHiddenColumnKeys] = useState([]);
+  const [canUndoLayout, setCanUndoLayout] = useState(false);
+  const [headerTooltip, setHeaderTooltip] = useState(null);
   const tableContainerRef = useRef(null);
   const bottomScrollbarRef = useRef(null);
   const tableElementRef = useRef(null);
   const isSyncingScrollRef = useRef(false);
   const resizeStateRef = useRef(null);
   const timersRef = useRef(new Map());
+  const skipNextColumnWidthSaveRef = useRef(false);
+  const layoutHistoryRef = useRef([]);
+  const editSessionSnapshotRef = useRef(null);
   const serializedColumnFilters = JSON.stringify(columnFilters);
   const fixedColumnStorageKey = useMemo(
     () => `agent-batch-fixed-columns:${isManagedView ? agentId || 'managed' : 'self'}:${batchId || 'default'}`,
@@ -436,6 +441,7 @@ const AgentBatchPage = () => {
       return;
     }
 
+    skipNextColumnWidthSaveRef.current = true;
     const storedValue = window.localStorage.getItem(columnWidthStorageKey);
     if (!storedValue) {
       setColumnWidths(DEFAULT_COLUMN_WIDTHS);
@@ -455,6 +461,11 @@ const AgentBatchPage = () => {
 
   useEffect(() => {
     if (typeof window === 'undefined') {
+      return;
+    }
+
+    if (skipNextColumnWidthSaveRef.current) {
+      skipNextColumnWidthSaveRef.current = false;
       return;
     }
 
@@ -487,6 +498,89 @@ const AgentBatchPage = () => {
 
     window.localStorage.setItem(hiddenColumnStorageKey, JSON.stringify(hiddenColumnKeys));
   }, [hiddenColumnKeys, hiddenColumnStorageKey]);
+
+  const captureLayoutSnapshot = () => ({
+    fixedColumnKeys: [...fixedColumnKeys],
+    hiddenColumnKeys: [...hiddenColumnKeys],
+    columnColors: { ...columnColors },
+    columnWidths: { ...columnWidths },
+  });
+
+  const areLayoutSnapshotsEqual = (left, right) => JSON.stringify(left) === JSON.stringify(right);
+
+  const applyLayoutSnapshot = (snapshot) => {
+    if (!snapshot) {
+      return;
+    }
+
+    setFixedColumnKeys(snapshot.fixedColumnKeys || DEFAULT_FIXED_COLUMN_KEYS);
+    setHiddenColumnKeys(snapshot.hiddenColumnKeys || []);
+    setColumnColors(snapshot.columnColors || DEFAULT_COLUMN_COLORS);
+    setColumnWidths(snapshot.columnWidths || DEFAULT_COLUMN_WIDTHS);
+  };
+
+  const pushLayoutHistory = (snapshot = captureLayoutSnapshot()) => {
+    const currentStack = layoutHistoryRef.current;
+    const lastSnapshot = currentStack[currentStack.length - 1];
+
+    if (lastSnapshot && areLayoutSnapshotsEqual(lastSnapshot, snapshot)) {
+      return;
+    }
+
+    layoutHistoryRef.current = [...currentStack, snapshot];
+    setCanUndoLayout(layoutHistoryRef.current.length > 0);
+  };
+
+  const undoLayoutChange = () => {
+    if (!layoutHistoryRef.current.length) {
+      return;
+    }
+
+    const nextStack = [...layoutHistoryRef.current];
+    const previousSnapshot = nextStack.pop();
+    layoutHistoryRef.current = nextStack;
+    setCanUndoLayout(nextStack.length > 0);
+    applyLayoutSnapshot(previousSnapshot);
+  };
+
+  const cancelEditTableSession = () => {
+    if (editSessionSnapshotRef.current) {
+      applyLayoutSnapshot(editSessionSnapshotRef.current);
+      pushLayoutHistory(editSessionSnapshotRef.current);
+    }
+    setIsFixedColumnEditMode(false);
+    editSessionSnapshotRef.current = null;
+  };
+
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      const isUndo = (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z' && !event.shiftKey;
+      if (!isUndo) {
+        return;
+      }
+
+      const target = event.target;
+      const isFormTarget =
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement ||
+        target?.isContentEditable;
+
+      if (isFormTarget) {
+        return;
+      }
+
+      if (!canUndoLayout) {
+        return;
+      }
+
+      event.preventDefault();
+      undoLayoutChange();
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [canUndoLayout]);
   const filteredAssignments = useMemo(() => {
     const matchesFilterValue = (sourceValue, filterValue) =>
       String(sourceValue || '').toLowerCase().includes(String(filterValue || '').trim().toLowerCase());
@@ -1002,6 +1096,7 @@ const AgentBatchPage = () => {
     return color[kind] || '';
   };
   const setRemarkColumnColor = (columnKey, colorKey) => {
+    pushLayoutHistory();
     setColumnColors((current) => ({
       ...current,
       [columnKey]: colorKey,
@@ -1012,6 +1107,7 @@ const AgentBatchPage = () => {
       return;
     }
 
+    pushLayoutHistory();
     setHiddenColumnKeys((current) =>
       current.includes(columnKey)
         ? current.filter((key) => key !== columnKey)
@@ -1019,12 +1115,14 @@ const AgentBatchPage = () => {
     );
   };
   const startColumnResize = (event, columnKey) => {
-    if (!isFixedColumnEditMode || isManagedView) {
+    if (isManagedView) {
       return;
     }
 
     event.preventDefault();
     event.stopPropagation();
+
+    pushLayoutHistory();
 
     resizeStateRef.current = {
       columnKey,
@@ -1050,10 +1148,18 @@ const AgentBatchPage = () => {
         MIN_COLUMN_WIDTH
       );
 
-      setColumnWidths((current) => ({
-        ...current,
-        [resizeState.columnKey]: nextWidth,
-      }));
+      setColumnWidths((current) => {
+        const nextWidths = {
+          ...current,
+          [resizeState.columnKey]: nextWidth,
+        };
+
+        if (typeof window !== 'undefined') {
+          window.localStorage.setItem(columnWidthStorageKey, JSON.stringify(nextWidths));
+        }
+
+        return nextWidths;
+      });
     };
 
     const stopResize = () => {
@@ -1071,24 +1177,29 @@ const AgentBatchPage = () => {
       window.removeEventListener('pointermove', handlePointerMove);
       window.removeEventListener('pointerup', stopResize);
     };
-  }, []);
+  }, [columnWidthStorageKey]);
   const renderHeaderLabel = (columnKey, label, onSort) => (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between gap-2">
-        <button type="button" onClick={onSort} className="truncate text-left">
+    <div className="space-y-1">
+      <div className="flex min-w-0 items-start justify-between gap-1">
+        <button
+          type="button"
+          onClick={onSort}
+          className="min-w-0 flex-1 truncate text-left leading-tight"
+        >
           {label}
         </button>
         {isFixedColumnEditMode && !isManagedView ? (
           <div className="flex items-center gap-1">
             <button
               type="button"
-              onClick={() =>
+              onClick={() => {
+                pushLayoutHistory();
                 setFixedColumnKeys((current) =>
                   current.includes(columnKey)
                     ? current.filter((key) => key !== columnKey)
                     : [...current, columnKey]
-                )
-              }
+                );
+              }}
               className={`rounded px-2 py-1 text-[10px] font-bold uppercase tracking-wide ${
                 isFixedColumn(columnKey)
                   ? 'bg-indigo-600 text-white'
@@ -1130,6 +1241,15 @@ const AgentBatchPage = () => {
       ) : null}
     </div>
   );
+  const showHeaderTooltip = (event, label) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    setHeaderTooltip({
+      label,
+      left: rect.left + rect.width / 2,
+      top: Math.max(rect.top - 8, 8),
+    });
+  };
+  const hideHeaderTooltip = () => setHeaderTooltip(null);
   const getColumnLabel = (columnKey) => {
     if (columnKey === 'contact') return contactHeader;
     if (columnKey === 'product') return 'Product';
@@ -1158,6 +1278,14 @@ const AgentBatchPage = () => {
 
   return (
     <div className={pageWrapperClassName}>
+      {headerTooltip && (
+        <div
+          className="pointer-events-none fixed z-[9999] max-w-xs -translate-x-1/2 -translate-y-full rounded-lg bg-slate-900 px-3 py-2 text-xs font-medium text-white shadow-lg"
+          style={{ left: `${headerTooltip.left}px`, top: `${headerTooltip.top}px` }}
+        >
+          {headerTooltip.label}
+        </div>
+      )}
       {!isFocusMode && (
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-4">
@@ -1323,7 +1451,16 @@ const AgentBatchPage = () => {
             </div>
             <button
               type="button"
-              onClick={() => setIsFixedColumnEditMode((current) => !current)}
+              onClick={() => {
+                if (isFixedColumnEditMode) {
+                  setIsFixedColumnEditMode(false);
+                  editSessionSnapshotRef.current = null;
+                  return;
+                }
+
+                editSessionSnapshotRef.current = captureLayoutSnapshot();
+                setIsFixedColumnEditMode(true);
+              }}
               className={`rounded-full border px-3 py-1 text-xs font-semibold ${
                 isFixedColumnEditMode
                   ? 'border-indigo-300 bg-indigo-50 text-indigo-700'
@@ -1332,6 +1469,27 @@ const AgentBatchPage = () => {
             >
               {isFixedColumnEditMode ? 'Done Editing Table' : 'Edit Table'}
             </button>
+            {!isManagedView && (
+              <button
+                type="button"
+                onClick={undoLayoutChange}
+                disabled={!canUndoLayout}
+                className="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                title="Undo last table layout change"
+              >
+                Undo
+              </button>
+            )}
+            {isFixedColumnEditMode && !isManagedView && (
+              <button
+                type="button"
+                onClick={cancelEditTableSession}
+                className="rounded-full border border-rose-300 bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-100"
+                title="Cancel layout changes from this edit session"
+              >
+                Cancel Edit
+              </button>
+            )}
             <div className="rounded-full bg-white px-3 py-1 text-xs font-medium text-slate-600 ring-1 ring-slate-200">
               Fixed: {pinnedColumnKeys.length
                 ? pinnedColumnKeys
@@ -1358,11 +1516,11 @@ const AgentBatchPage = () => {
           </div>
           <div className="flex items-center gap-2">
             {!isManagedView && (
-              <button
-                type="button"
-                onClick={() => setIsFocusMode((current) => !current)}
-                className="rounded-full border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-              >
+            <button
+              type="button"
+              onClick={() => setIsFocusMode((current) => !current)}
+              className="rounded-full border border-slate-300 px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+            >
                 {isFocusMode ? 'Exit Expanded Sheet' : 'Expand Sheet'}
               </button>
             )}
@@ -1370,7 +1528,7 @@ const AgentBatchPage = () => {
               type="button"
               onClick={() => scrollLeadSheet('left')}
               disabled={!canScrollLeft}
-              className="rounded-full border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+              className="rounded-full border border-slate-300 px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
             >
               ←
             </button>
@@ -1378,7 +1536,7 @@ const AgentBatchPage = () => {
               type="button"
               onClick={() => scrollLeadSheet('right')}
               disabled={!canScrollRight}
-              className="rounded-full border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+              className="rounded-full border border-slate-300 px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
             >
               →
             </button>
@@ -1389,7 +1547,7 @@ const AgentBatchPage = () => {
           className="min-h-0 flex-1 overflow-y-auto overflow-x-auto [&::-webkit-scrollbar]:hidden"
           style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
         >
-          <table ref={tableElementRef} className="min-w-[2200px] divide-y divide-slate-200 text-[13px] leading-5">
+          <table ref={tableElementRef} className="min-w-[2200px] divide-y divide-slate-200 text-[12px] leading-4">
             <thead>
               <tr>
                 {orderedDisplayColumnKeys.map((columnKey) => (
@@ -1397,18 +1555,20 @@ const AgentBatchPage = () => {
                     key={`header-${columnKey}`}
                     className={getPinnedClasses(
                       columnKey,
-                      'relative sticky top-0 whitespace-nowrap border-r border-slate-200 px-3 py-2 text-left font-semibold overflow-visible',
+                      'relative sticky top-0 whitespace-nowrap align-top border-r border-slate-200 px-2 py-1.5 text-left text-[12px] font-semibold overflow-visible',
                       getHeaderBgClass(columnKey),
                       columnKey === 'contact' ? 'z-50' : 'z-40'
                     )}
                     style={getColumnStyle(columnKey)}
+                    onMouseEnter={(event) => showHeaderTooltip(event, getColumnLabel(columnKey))}
+                    onMouseLeave={hideHeaderTooltip}
                   >
-                    <div className="relative">
+                    <div className="relative min-w-0">
                       {['agentNotes', 'pipeline', 'saveState'].includes(columnKey)
-                        ? getColumnLabel(columnKey)
+                        ? <span className="block min-w-0 truncate leading-tight">{getColumnLabel(columnKey)}</span>
                         : renderHeaderLabel(columnKey, getColumnLabel(columnKey), () => toggleSort(columnKey))}
                     </div>
-                    {isFixedColumnEditMode && !isManagedView ? (
+                    {!isManagedView ? (
                       <button
                         type="button"
                         onPointerDown={(event) => startColumnResize(event, columnKey)}
@@ -1428,28 +1588,28 @@ const AgentBatchPage = () => {
                     key={`filter-${columnKey}`}
                     className={getPinnedClasses(
                       columnKey,
-                      'sticky top-[41px] border-r border-slate-200 px-3 py-2',
+                      'sticky top-[36px] border-r border-slate-200 px-2 py-1.5',
                       getFilterBgClass(columnKey),
                       columnKey === 'contact' ? 'z-40' : 'z-30'
                     )}
                     style={getColumnStyle(columnKey)}
                   >
                     {columnKey === 'contact' ? (
-                      <input type="text" value={columnFilters.contact || ''} onChange={(event) => updateColumnFilter('contact', event.target.value)} placeholder="Search" className="w-full min-w-0 rounded-md border border-slate-300 px-2 py-1 text-[12px]" />
+                      <input type="text" value={columnFilters.contact || ''} onChange={(event) => updateColumnFilter('contact', event.target.value)} placeholder="Search" className="w-full min-w-0 rounded-md border border-slate-300 px-2 py-0.5 text-[11px]" />
                     ) : columnKey === 'product' ? (
-                      <input type="text" value={columnFilters.product || ''} onChange={(event) => updateColumnFilter('product', event.target.value)} placeholder="Filter" className="w-full min-w-0 rounded-md border border-slate-300 px-2 py-1 text-[12px]" />
+                      <input type="text" value={columnFilters.product || ''} onChange={(event) => updateColumnFilter('product', event.target.value)} placeholder="Filter" className="w-full min-w-0 rounded-md border border-slate-300 px-2 py-0.5 text-[11px]" />
                     ) : columnKey.startsWith('raw:') ? (
-                      <input type="text" value={columnFilters[columnKey] || ''} onChange={(event) => updateColumnFilter(columnKey, event.target.value)} placeholder="Search" className="w-full min-w-0 rounded-md border border-slate-300 px-2 py-1 text-[12px]" />
+                      <input type="text" value={columnFilters[columnKey] || ''} onChange={(event) => updateColumnFilter(columnKey, event.target.value)} placeholder="Search" className="w-full min-w-0 rounded-md border border-slate-300 px-2 py-0.5 text-[11px]" />
                     ) : columnKey === 'contactabilityStatus' ? (
-                      <select value={columnFilters.contactabilityStatus || ''} onChange={(event) => updateColumnFilter('contactabilityStatus', event.target.value)} className="w-full min-w-0 rounded-md border border-slate-300 px-2 py-1 text-[12px]"><option value="">All</option>{(activeRemarkConfig.contactabilityStatuses || []).map((status) => <option key={status} value={status}>{status}</option>)}</select>
+                      <select value={columnFilters.contactabilityStatus || ''} onChange={(event) => updateColumnFilter('contactabilityStatus', event.target.value)} className="w-full min-w-0 rounded-md border border-slate-300 px-2 py-0.5 text-[11px]"><option value="">All</option>{(activeRemarkConfig.contactabilityStatuses || []).map((status) => <option key={status} value={status}>{status}</option>)}</select>
                     ) : columnKey === 'callingRemark' ? (
-                      <select value={columnFilters.callingRemark || ''} onChange={(event) => updateColumnFilter('callingRemark', event.target.value)} className="w-full min-w-0 rounded-md border border-slate-300 px-2 py-1 text-[12px]"><option value="">All</option>{activeRemarkConfig.callingRemarks.map((remark) => <option key={remark} value={remark}>{remark}</option>)}</select>
+                      <select value={columnFilters.callingRemark || ''} onChange={(event) => updateColumnFilter('callingRemark', event.target.value)} className="w-full min-w-0 rounded-md border border-slate-300 px-2 py-0.5 text-[11px]"><option value="">All</option>{activeRemarkConfig.callingRemarks.map((remark) => <option key={remark} value={remark}>{remark}</option>)}</select>
                     ) : columnKey === 'interestedRemark' ? (
-                      <select value={columnFilters.interestedRemark || ''} onChange={(event) => updateColumnFilter('interestedRemark', event.target.value)} className="w-full min-w-0 rounded-md border border-slate-300 px-2 py-1 text-[12px]"><option value="">All</option>{activeRemarkConfig.interestedRemarks.map((remark) => <option key={remark} value={remark}>{remark}</option>)}</select>
+                      <select value={columnFilters.interestedRemark || ''} onChange={(event) => updateColumnFilter('interestedRemark', event.target.value)} className="w-full min-w-0 rounded-md border border-slate-300 px-2 py-0.5 text-[11px]"><option value="">All</option>{activeRemarkConfig.interestedRemarks.map((remark) => <option key={remark} value={remark}>{remark}</option>)}</select>
                     ) : columnKey === 'notInterestedRemark' ? (
-                      <select value={columnFilters.notInterestedRemark || ''} onChange={(event) => updateColumnFilter('notInterestedRemark', event.target.value)} className="w-full min-w-0 rounded-md border border-slate-300 px-2 py-1 text-[12px]"><option value="">All</option>{activeRemarkConfig.notInterestedRemarks.map((remark) => <option key={remark} value={remark}>{remark}</option>)}</select>
+                      <select value={columnFilters.notInterestedRemark || ''} onChange={(event) => updateColumnFilter('notInterestedRemark', event.target.value)} className="w-full min-w-0 rounded-md border border-slate-300 px-2 py-0.5 text-[11px]"><option value="">All</option>{activeRemarkConfig.notInterestedRemarks.map((remark) => <option key={remark} value={remark}>{remark}</option>)}</select>
                     ) : columnKey === 'status' ? (
-                      <select value={columnFilters.status || ''} onChange={(event) => updateColumnFilter('status', event.target.value)} className="w-full min-w-0 rounded-md border border-slate-300 px-2 py-1 text-[12px]"><option value="">All</option><option value="submitted">Submitted</option><option value="activated">Activated</option></select>
+                      <select value={columnFilters.status || ''} onChange={(event) => updateColumnFilter('status', event.target.value)} className="w-full min-w-0 rounded-md border border-slate-300 px-2 py-0.5 text-[11px]"><option value="">All</option><option value="submitted">Submitted</option><option value="activated">Activated</option></select>
                     ) : null}
                   </th>
                 ))}
@@ -1472,7 +1632,7 @@ const AgentBatchPage = () => {
                   <tr key={assignment._id} className={`${accentRowBackground} ${isCopiedRow ? 'ring-1 ring-inset ring-amber-200' : ''}`}>
                     {orderedDisplayColumnKeys.map((columnKey) => {
                       const baseBg = getCellBgClass(columnKey, isCopiedRow ? 'bg-amber-50' : isCalledRow ? 'bg-emerald-50' : index % 2 === 0 ? 'bg-white' : 'bg-slate-50');
-                      const cellClassName = getPinnedClasses(columnKey, columnKey === 'contact' ? 'border-r border-slate-200 px-3 py-1.5 font-medium text-slate-900' : 'border-r border-slate-200 px-3 py-2', baseBg, columnKey === 'contact' ? 'z-30' : 'z-20');
+                      const cellClassName = getPinnedClasses(columnKey, columnKey === 'contact' ? 'border-r border-slate-200 px-2 py-1 font-medium text-slate-900' : 'border-r border-slate-200 px-2 py-1', baseBg, columnKey === 'contact' ? 'z-30' : 'z-20');
 
                       if (columnKey === 'contact') {
                         return (
@@ -1499,7 +1659,7 @@ const AgentBatchPage = () => {
                         return (
                           <td key={`${assignment._id}-${columnKey}`} className={cellClassName} style={getColumnStyle(columnKey)}>
                             {isManagedView ? renderManagedFieldHistory(assignment, 'contactabilityStatus', assignment.contactabilityStatus) : (
-                              <select value={assignment.contactabilityStatus || ''} onChange={(event) => handleFieldChange(assignment._id, 'contactabilityStatus', event.target.value)} className="w-full min-w-0 rounded-md border border-slate-300 px-2 py-1 text-[12px]">
+                              <select value={assignment.contactabilityStatus || ''} onChange={(event) => handleFieldChange(assignment._id, 'contactabilityStatus', event.target.value)} className="w-full min-w-0 rounded-md border border-slate-300 px-2 py-0.5 text-[11px]">
                                 <option value="">Select</option>
                                 {(remarks.contactabilityStatuses || []).map((status) => <option key={status} value={status}>{status}</option>)}
                               </select>
@@ -1514,8 +1674,8 @@ const AgentBatchPage = () => {
                           <td key={`${assignment._id}-${columnKey}`} className={cellClassName} style={getColumnStyle(columnKey)}>
                             {isManagedView ? renderManagedFieldHistory(assignment, field, assignment[field]) : (
                               <div className="flex w-full min-w-0 gap-1.5">
-                                <input type="date" value={splitAttemptValue(assignment[field]).date} onChange={(event) => handleAttemptChange(assignment, field, 'date', event.target.value)} className="min-w-0 flex-1 rounded-md border border-slate-300 px-2 py-1 text-[12px]" />
-                                <input type="time" value={splitAttemptValue(assignment[field]).time} onChange={(event) => handleAttemptChange(assignment, field, 'time', event.target.value)} className="w-[82px] min-w-0 rounded-md border border-slate-300 px-2 py-1 text-[12px]" />
+                                <input type="date" value={splitAttemptValue(assignment[field]).date} onChange={(event) => handleAttemptChange(assignment, field, 'date', event.target.value)} className="min-w-0 flex-1 rounded-md border border-slate-300 px-2 py-0.5 text-[11px]" />
+                                <input type="time" value={splitAttemptValue(assignment[field]).time} onChange={(event) => handleAttemptChange(assignment, field, 'time', event.target.value)} className="w-[78px] min-w-0 rounded-md border border-slate-300 px-2 py-0.5 text-[11px]" />
                               </div>
                             )}
                           </td>
@@ -1532,7 +1692,7 @@ const AgentBatchPage = () => {
                         return (
                           <td key={`${assignment._id}-${columnKey}`} className={cellClassName} style={getColumnStyle(columnKey)}>
                             {isManagedView ? renderManagedFieldHistory(assignment, columnKey, assignment[columnKey]) : (
-                              <select value={assignment[columnKey] || ''} onChange={(event) => handleFieldChange(assignment._id, columnKey, event.target.value)} className={`w-full min-w-0 rounded-md border px-2 py-1 text-[12px] font-medium ${selectColorClass}`}>
+                              <select value={assignment[columnKey] || ''} onChange={(event) => handleFieldChange(assignment._id, columnKey, event.target.value)} className={`w-full min-w-0 rounded-md border px-2 py-0.5 text-[11px] font-medium ${selectColorClass}`}>
                                 <option value="">Select</option>
                                 {options.map((remark) => <option key={remark} value={remark}>{remark}</option>)}
                               </select>
@@ -1545,7 +1705,7 @@ const AgentBatchPage = () => {
                         return (
                           <td key={`${assignment._id}-${columnKey}`} className={cellClassName} style={getColumnStyle(columnKey)}>
                             {isManagedView ? renderManagedFieldHistory(assignment, 'agentNotes', assignment.agentNotes) : (
-                              <input type="text" value={assignment.agentNotes || ''} onChange={(event) => handleFieldChange(assignment._id, 'agentNotes', event.target.value)} className="w-full min-w-0 rounded-md border border-slate-300 px-2 py-1 text-[12px]" />
+                              <input type="text" value={assignment.agentNotes || ''} onChange={(event) => handleFieldChange(assignment._id, 'agentNotes', event.target.value)} className="w-full min-w-0 rounded-md border border-slate-300 px-2 py-0.5 text-[11px]" />
                             )}
                           </td>
                         );
@@ -1555,7 +1715,7 @@ const AgentBatchPage = () => {
                         return (
                           <td key={`${assignment._id}-${columnKey}`} className={cellClassName} style={getColumnStyle(columnKey)}>
                             {isManagedView ? renderManagedFieldHistory(assignment, 'status', assignment.status) : (
-                              <select value={assignment.status || ''} onChange={(event) => handleFieldChange(assignment._id, 'status', event.target.value)} className="w-full min-w-0 rounded-md border border-slate-300 px-2 py-1 text-[12px]">
+                              <select value={assignment.status || ''} onChange={(event) => handleFieldChange(assignment._id, 'status', event.target.value)} className="w-full min-w-0 rounded-md border border-slate-300 px-2 py-0.5 text-[11px]">
                                 <option value="">Select</option>
                                 <option value="submitted">Submitted</option>
                                 <option value="activated">Activated</option>
@@ -1570,8 +1730,8 @@ const AgentBatchPage = () => {
                           <td key={`${assignment._id}-${columnKey}`} className={cellClassName} style={getColumnStyle(columnKey)}>
                             {isManagedView ? renderManagedFieldHistory(assignment, 'pipeline', assignment.inPipeline ? `In Pipeline${assignment.pipelineFollowUpDate ? ` - ${assignment.pipelineFollowUpDate}` : ''}` : assignment.pipelineFollowUpDate || 'Not In Pipeline') : (
                               <div className="flex w-full min-w-0 gap-1.5">
-                                <input type="date" value={assignment.pipelineFollowUpDate || ''} onChange={(event) => handleFieldChange(assignment._id, 'pipelineFollowUpDate', event.target.value)} className="min-w-0 flex-1 rounded-md border border-slate-300 px-2 py-1 text-[12px]" />
-                                <button type="button" onClick={() => openPipelineDraft(assignment)} className={`rounded-lg px-3 py-1 text-xs font-medium text-white ${assignment.inPipeline ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-amber-600 hover:bg-amber-700'}`}>{assignment.inPipeline ? 'Added' : 'Add'}</button>
+                                <input type="date" value={assignment.pipelineFollowUpDate || ''} onChange={(event) => handleFieldChange(assignment._id, 'pipelineFollowUpDate', event.target.value)} className="min-w-0 flex-1 rounded-md border border-slate-300 px-2 py-0.5 text-[11px]" />
+                                <button type="button" onClick={() => openPipelineDraft(assignment)} className={`rounded-lg px-2 py-0.5 text-[11px] font-medium text-white ${assignment.inPipeline ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-amber-600 hover:bg-amber-700'}`}>{assignment.inPipeline ? 'Added' : 'Add'}</button>
                               </div>
                             )}
                           </td>
