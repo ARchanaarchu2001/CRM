@@ -775,7 +775,7 @@ export const updateUser = asyncHandler(async (req, res) => {
     delete req.body.team;
     delete req.body.teamLead;
     delete req.body.assignedTeam;
-  } else if (req.user.role === ROLES.AGENT) {
+  } else if (req.user.role === ROLES.AGENT || req.user.role === ROLES.DATA_ANALYST) {
     if (targetUser._id.toString() !== req.user._id.toString()) {
       return res.status(403).json({ success: false, message: 'Forbidden to edit this user' });
     }

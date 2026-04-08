@@ -60,6 +60,7 @@ function App() {
                 <Route path="/analyst-overview" element={<AnalystOverviewPage />} />
                 <Route path="/analyst-agent-performance" element={<AnalystAgentPerformancePage />} />
                 <Route path="/analyst-dash/:batchId" element={<AnalystDatasetPage />} />
+                <Route path="/analyst-settings" element={<AgentSettingsPage />} />
                 <Route path="/lead-settings" element={<LeadSettingsPage />} />
               </Route>
 

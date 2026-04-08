@@ -6,12 +6,17 @@ import { PROFILE_PHOTO_ACCEPT, validateProfilePhotoFile } from '../utils/profile
 
 const AgentSettingsPage = () => {
   const dispatch = useDispatch();
-  const { user } = useSelector((state) => state.auth);
+  const { user, role } = useSelector((state) => state.auth);
   const [profilePhotoFile, setProfilePhotoFile] = useState(null);
   const [photoPreview, setPhotoPreview] = useState(user?.profilePhoto ? `/uploads/${user.profilePhoto}` : '');
   const [isPhotoSubmitting, setIsPhotoSubmitting] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const roleLabel = role === 'data_analyst' ? 'Data Analyst' : 'Agent';
+  const pageDescription =
+    role === 'data_analyst'
+      ? 'Update your profile picture for the analyst workspace.'
+      : 'Update your profile picture.';
 
   const handlePhotoChange = (event) => {
     const file = event.target.files?.[0];
@@ -69,10 +74,8 @@ const AgentSettingsPage = () => {
     <div className="mx-auto max-w-xl py-6">
       <section className="rounded-[1.75rem] border border-slate-200 bg-white p-6 shadow-sm">
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Settings</p>
-        <h1 className="mt-2 text-2xl font-bold text-slate-900">Profile Photo</h1>
-        <p className="mt-2 text-sm text-slate-500">
-          Update your profile picture.
-        </p>
+        <h1 className="mt-2 text-2xl font-bold text-slate-900">{roleLabel} Profile Photo</h1>
+        <p className="mt-2 text-sm text-slate-500">{pageDescription}</p>
 
         {message && (
           <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800">
