@@ -8,6 +8,7 @@ import LeadImport from '../models/LeadImport.js';
 import SavedReport from '../models/SavedReport.js';
 import ProductRemarkConfig from '../models/ProductRemarkConfig.js';
 import User from '../models/User.js';
+import Team from '../models/Team.js';
 import { ROLES } from '../constants/roles.js';
 import { checkLeadWorkedActivity, checkIsLeadCleared, getCurrentDateString, calculateSingleAgentMetrics } from '../utils/leadMetrics.js';
 import { getIO } from '../utils/socket.js';
@@ -361,19 +362,21 @@ export const getUploadMiddleware = () => upload.single('file');
 export const getLeadMetadata = asyncHandler(async (req, res) => {
   await ensureDefaultRemarkConfigs();
 
-  const [remarkConfigs, agents, recentImports] = await Promise.all([
+  const [remarkConfigs, agents, recentImports, teams] = await Promise.all([
     ProductRemarkConfig.find().sort({ product: 1 }),
     User.find({
       role: ROLES.AGENT,
       isActive: true,
       isBlocked: false,
     })
-      .select('fullName email role')
+      .select('fullName email role team assignedTeam')
+      .populate('team', 'name')
       .sort({ fullName: 1 }),
     LeadImport.find()
       .sort({ createdAt: -1 })
       .limit(10)
       .populate('uploadedBy', 'fullName email'),
+    Team.find().select('name lead').sort({ name: 1 }),
   ]);
 
   res.status(200).json({
@@ -381,6 +384,7 @@ export const getLeadMetadata = asyncHandler(async (req, res) => {
     remarkConfigs,
     agents,
     recentImports,
+    teams,
   });
 });
 
@@ -2040,11 +2044,11 @@ export const getAdvancedReportData = asyncHandler(async (req, res) => {
 
   // 1. Resolve Agents to include
   const agentQuery = { role: ROLES.AGENT, isDeleted: false };
-  if (agentId) {
+  if (agentId && agentId !== 'all') {
     agentQuery._id = agentId;
   } else if (teamId && teamId !== 'all') {
     // Handle both real team IDs and the fallback "team:Name" label
-    if (teamId.startsWith('team:')) {
+    if (String(teamId).startsWith('team:')) {
       const teamName = teamId.replace('team:', '');
       agentQuery.$or = [{ assignedTeam: teamName }, { 'team.name': teamName }];
     } else {
@@ -2123,9 +2127,10 @@ export const exportAdvancedReportDetail = asyncHandler(async (req, res) => {
 
   // 1. Resolve Agents
   const agentQuery = { role: ROLES.AGENT, isDeleted: false };
-  if (agentId && agentId !== 'all') agentQuery._id = agentId;
-  else if (teamId && teamId !== 'all') {
-    if (teamId.startsWith('team:')) {
+  if (agentId && agentId !== 'all') {
+    agentQuery._id = agentId;
+  } else if (teamId && teamId !== 'all') {
+    if (String(teamId).startsWith('team:')) {
       const teamName = teamId.replace('team:', '');
       agentQuery.$or = [{ assignedTeam: teamName }, { 'team.name': teamName }];
     } else {

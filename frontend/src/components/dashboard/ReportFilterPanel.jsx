@@ -13,6 +13,15 @@ const ReportFilterPanel = ({
     const seen = new Set();
     const options = [];
 
+    // 1. Add formal teams from Teams collection
+    metadata.teams?.forEach((team) => {
+      const value = team._id;
+      const label = team.name;
+      seen.add(value);
+      options.push({ value, label });
+    });
+
+    // 2. Add ad-hoc teams/labels from agents that might not be in the Teams collection
     agents.forEach((agent) => {
       const label = agent.assignedTeam || agent.team?.name || 'Unassigned Team';
       const value = agent.team?._id ? agent.team._id : `team:${label}`;
@@ -23,7 +32,7 @@ const ReportFilterPanel = ({
     });
 
     return options.sort((a, b) => a.label.localeCompare(b.label));
-  }, [agents]);
+  }, [agents, metadata.teams]);
 
   const filteredAgents = useMemo(() => {
     if (!filter.teamId || filter.teamId === 'all') return agents;
