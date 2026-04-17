@@ -1,12 +1,12 @@
+import 'dotenv/config';
 import mongoose from 'mongoose';
-import dotenv from 'dotenv';
 import User from '../models/User.js';
 import Lead from '../models/Lead.js';
 import LeadImport from '../models/LeadImport.js';
 import LeadAssignment from '../models/LeadAssignment.js';
 import { ROLES } from '../constants/roles.js';
 
-dotenv.config();
+
 
 const MONGO_URI = process.env.MONGO_URI;
 

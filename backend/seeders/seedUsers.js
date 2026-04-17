@@ -1,10 +1,9 @@
+import 'dotenv/config';
 import mongoose from 'mongoose';
-import dotenv from 'dotenv';
 import User from '../models/User.js';
 import { ROLES } from '../constants/roles.js';
 
-// Load env variables
-dotenv.config();
+
 
 const usersToSeed = [
   {

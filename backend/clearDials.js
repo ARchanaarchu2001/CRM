@@ -1,8 +1,8 @@
+import 'dotenv/config';
 import mongoose from 'mongoose';
-import dotenv from 'dotenv';
 import LeadAssignment from './models/LeadAssignment.js';
 
-dotenv.config();
+
 
 const clearDials = async () => {
   try {
