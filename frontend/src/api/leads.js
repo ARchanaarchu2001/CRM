@@ -83,6 +83,34 @@ export const fetchAnalystPerformanceOverview = async (params) => {
   return response.data;
 };
 
+export const fetchAdvancedReports = async (params) => {
+  const response = await axiosPrivate.get('/leads/analyst/reports', { params });
+  return response.data;
+};
+
+export const downloadAdvancedReportExport = async (params) => {
+  const response = await axiosPrivate.get('/leads/analyst/reports/export', {
+    params,
+    responseType: 'blob',
+  });
+  return response.data;
+};
+
+export const saveReport = async (payload) => {
+  const response = await axiosPrivate.post('/leads/reports/saved', payload);
+  return response.data;
+};
+
+export const fetchSavedReports = async () => {
+  const response = await axiosPrivate.get('/leads/reports/saved');
+  return response.data;
+};
+
+export const deleteSavedReport = async (id) => {
+  const response = await axiosPrivate.delete(`/leads/reports/saved/${id}`);
+  return response.data;
+};
+
 // Delete analyst batch ✅ FIXED
 export const deleteAnalystBatch = async (importBatchId) => {
   const response = await axiosPrivate.delete(`/leads/analyst/batches/${importBatchId}`);

@@ -61,6 +61,12 @@ export const resolveDateRange = ({ range = 'today', from, to }) => {
   } else if (normalizedRange === 'month') {
     startDate = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1, 0, 0, 0, 0));
     endDate = today;
+  } else if (normalizedRange === 'year') {
+    startDate = new Date(Date.UTC(today.getUTCFullYear(), 0, 1, 0, 0, 0, 0));
+    endDate = today;
+  } else if (normalizedRange === 'last_year') {
+    startDate = new Date(Date.UTC(today.getUTCFullYear() - 1, 0, 1, 0, 0, 0, 0));
+    endDate = new Date(Date.UTC(today.getUTCFullYear() - 1, 11, 31, 23, 59, 59, 999));
   } else if (normalizedRange === 'custom') {
     const parsedFrom = parseDateInput(from);
     const parsedTo = parseDateInput(to);
@@ -94,7 +100,11 @@ export const resolveDateRange = ({ range = 'today', from, to }) => {
             ? 'This Week'
             : normalizedRange === 'month'
               ? 'This Month'
-              : `${formatDateKey(startDate)} to ${formatDateKey(endDate)}`,
+              : normalizedRange === 'year'
+                ? 'This Year'
+                : normalizedRange === 'last_year'
+                  ? 'Last Year'
+                  : `${formatDateKey(startDate)} to ${formatDateKey(endDate)}`,
   };
 };
 
@@ -132,10 +142,39 @@ const buildProductMetricTemplate = () =>
 const buildTrendSeries = (rangeInfo) => {
   const series = [];
   const pointer = new Date(rangeInfo.fromDate);
+  const diffDays = Math.ceil((rangeInfo.toDate - rangeInfo.fromDate) / (1000 * 60 * 60 * 24));
+
+  // Determine interval based on range length
+  let interval = 'day';
+  if (diffDays > 366) interval = 'month';
+  else if (diffDays > 62) interval = 'week';
 
   while (pointer <= rangeInfo.toDate) {
-    series.push(createTrendBucket(pointer));
-    pointer.setUTCDate(pointer.getUTCDate() + 1);
+    const bucket = createTrendBucket(pointer);
+    
+    if (interval === 'month') {
+      bucket.date = `${pointer.getUTCFullYear()}-${String(pointer.getUTCMonth() + 1).padStart(2, '0')}`;
+      bucket.label = pointer.toLocaleDateString('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' });
+    } else if (interval === 'week') {
+      // Find Monday as the week key
+      const temp = new Date(pointer);
+      const day = temp.getUTCDay();
+      const diff = day === 0 ? 6 : day - 1;
+      temp.setUTCDate(temp.getUTCDate() - diff);
+      bucket.date = formatDateKey(temp);
+      bucket.label = `Week of ${temp.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })}`;
+    }
+
+    series.push(bucket);
+
+    if (interval === 'month') {
+      pointer.setUTCMonth(pointer.getUTCMonth() + 1);
+      pointer.setUTCDate(1);
+    } else if (interval === 'week') {
+      pointer.setUTCDate(pointer.getUTCDate() + 7);
+    } else {
+      pointer.setUTCDate(pointer.getUTCDate() + 1);
+    }
   }
 
   return series;
@@ -151,6 +190,21 @@ const getDateKeyWithinRange = (dateValue, rangeInfo) => {
   const parsed = parseDateInput(dateValue);
   if (!parsed) return null;
   if (parsed < rangeInfo.fromDate || parsed > rangeInfo.toDate) return null;
+
+  const diffDays = Math.ceil((rangeInfo.toDate - rangeInfo.fromDate) / (1000 * 60 * 60 * 24));
+  if (diffDays > 366) {
+    // Return month key
+    return `${parsed.getUTCFullYear()}-${String(parsed.getUTCMonth() + 1).padStart(2, '0')}`;
+  } 
+  if (diffDays > 62) {
+    // Return week key (Monday)
+    const temp = new Date(parsed);
+    const day = temp.getUTCDay();
+    const diff = day === 0 ? 6 : day - 1;
+    temp.setUTCDate(temp.getUTCDate() - diff);
+    return formatDateKey(temp);
+  }
+
   return formatDateKey(parsed);
 };
 

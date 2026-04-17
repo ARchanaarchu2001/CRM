@@ -10,6 +10,8 @@ import AgentPipelinePage from './pages/AgentPipelinePage';
 import AgentQueuePage from './pages/AgentQueuePage';
 import AgentSettingsPage from './pages/AgentSettingsPage';
 import AgentPerformanceDetailPage from './pages/AgentPerformanceDetailPage';
+import AdvancedReportsPage from './pages/AdvancedReportsPage';
+import SavedReportsPage from './pages/SavedReportsPage';
 import DashboardHome from './pages/DashboardHome';
 import LeadSettingsPage from './pages/LeadSettingsPage';
 import LoginPage from './pages/LoginPage';
@@ -58,6 +60,8 @@ function App() {
               <Route element={<RoleProtectedRoute allowedRoles={['data_analyst', 'super_admin']} />}>
                 <Route path="/analyst-dash" element={<AnalystDashboard />} />
                 <Route path="/analyst-overview" element={<AnalystOverviewPage />} />
+                <Route path="/analyst-reports" element={<AdvancedReportsPage />} />
+                <Route path="/analyst-saved-reports" element={<SavedReportsPage />} />
                 <Route path="/analyst-agent-performance" element={<AnalystAgentPerformancePage />} />
                 <Route path="/analyst-dash/:batchId" element={<AnalystDatasetPage />} />
                 <Route path="/analyst-settings" element={<AgentSettingsPage />} />

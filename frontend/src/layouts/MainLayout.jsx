@@ -132,6 +132,8 @@ const firstName = getDisplayName();
 
     { to: '/analyst-dash', label: 'Analyst Workspace', show: false },
     { to: '/analyst-overview', label: 'Analyst Overview', show: ['data_analyst'].includes(role) },
+    { to: '/analyst-reports', label: 'Advanced Reports', show: ['data_analyst', 'super_admin'].includes(role) },
+    { to: '/analyst-saved-reports', label: 'Saved Reports', show: ['data_analyst', 'super_admin'].includes(role) },
     { to: '/analyst-agent-performance', label: 'Agent Performance', show: ['data_analyst'].includes(role) },
     { to: '/lead-settings', label: 'Lead Settings', show: ['data_analyst'].includes(role) },
     { to: '/analyst-settings', label: 'Settings', show: ['data_analyst'].includes(role) },

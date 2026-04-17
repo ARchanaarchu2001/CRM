@@ -1,9 +1,11 @@
 import multer from 'multer';
+import path from 'path';
 import XLSX from 'xlsx';
 import asyncHandler from '../utils/asyncHandler.js';
 import Lead from '../models/Lead.js';
 import LeadAssignment from '../models/LeadAssignment.js';
 import LeadImport from '../models/LeadImport.js';
+import SavedReport from '../models/SavedReport.js';
 import ProductRemarkConfig from '../models/ProductRemarkConfig.js';
 import User from '../models/User.js';
 import { ROLES } from '../constants/roles.js';
@@ -2017,5 +2019,284 @@ export const getManagedAgentBatchView = asyncHandler(async (req, res) => {
         remarkConfig: remarkConfigMap[assignment.product] || null,
       })),
     },
+  });
+});
+
+export const getAdvancedReportData = asyncHandler(async (req, res) => {
+  if (![ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN].includes(req.user.role)) {
+    res.status(403);
+    throw new Error('Forbidden');
+  }
+
+  const { teamId, agentId, importBatchId, product } = req.query;
+
+  let rangeInfo;
+  try {
+    rangeInfo = resolveDateRange(req.query);
+  } catch (error) {
+    res.status(400);
+    throw error;
+  }
+
+  // 1. Resolve Agents to include
+  const agentQuery = { role: ROLES.AGENT, isDeleted: false };
+  if (agentId) {
+    agentQuery._id = agentId;
+  } else if (teamId && teamId !== 'all') {
+    // Handle both real team IDs and the fallback "team:Name" label
+    if (teamId.startsWith('team:')) {
+      const teamName = teamId.replace('team:', '');
+      agentQuery.$or = [{ assignedTeam: teamName }, { 'team.name': teamName }];
+    } else {
+      agentQuery.team = teamId;
+    }
+  }
+
+  const agents = await User.find(agentQuery)
+    .select('fullName email profilePhoto assignedTeam team teamLead isActive')
+    .populate(ANALYTICS_TEAM_POPULATE)
+    .sort({ fullName: 1 })
+    .lean();
+
+  const activeAgentIds = agents.map((agent) => agent._id);
+
+  if (!activeAgentIds.length) {
+    return res.status(200).json({
+      success: true,
+      report: {
+        filter: rangeInfo,
+        kpis: [],
+        charts: { trend: [], productPerformance: [], agentDials: [], agentSubmissions: [], teamComparison: [] },
+        agentTable: [],
+      },
+    });
+  }
+
+  // 2. Resolve Assignments filters
+  const assignmentQuery = { agent: { $in: activeAgentIds } };
+  if (importBatchId) assignmentQuery.importBatch = importBatchId;
+  if (product) assignmentQuery.product = String(product).toLowerCase();
+
+  const assignments = await LeadAssignment.find(assignmentQuery)
+    .select('agent product status createdAt submittedAt activatedAt workedDates inPipeline pipelineFollowUpDate updatedAt contactabilityStatus callingRemark interestedRemark notInterestedRemark agentNotes')
+    .lean();
+
+  const detailedLogs = await LeadAssignment.find(assignmentQuery)
+    .populate('lead')
+    .populate('agent', 'fullName team assignedTeam')
+    .sort({ createdAt: -1 })
+    .limit(50)
+    .lean();
+
+  // 3. Build Analytics
+  const analytics = buildDashboardAnalytics({
+    agents,
+    assignments,
+    rangeInfo,
+    includeTeamComparison: true,
+  });
+
+  res.status(200).json({
+    success: true,
+    report: {
+      ...analytics,
+      detailedLogs,
+    },
+  });
+});
+
+export const exportAdvancedReportDetail = asyncHandler(async (req, res) => {
+  if (![ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN].includes(req.user.role)) {
+    res.status(403);
+    throw new Error('Forbidden');
+  }
+
+  const { teamId, agentId, importBatchId, product } = req.query;
+
+  let rangeInfo;
+  try {
+    rangeInfo = resolveDateRange(req.query);
+  } catch (error) {
+    res.status(400);
+    throw error;
+  }
+
+  // 1. Resolve Agents
+  const agentQuery = { role: ROLES.AGENT, isDeleted: false };
+  if (agentId && agentId !== 'all') agentQuery._id = agentId;
+  else if (teamId && teamId !== 'all') {
+    if (teamId.startsWith('team:')) {
+      const teamName = teamId.replace('team:', '');
+      agentQuery.$or = [{ assignedTeam: teamName }, { 'team.name': teamName }];
+    } else {
+      agentQuery.team = teamId;
+    }
+  }
+
+  const agents = await User.find(agentQuery)
+    .select('fullName email profilePhoto assignedTeam team isActive')
+    .populate(ANALYTICS_TEAM_POPULATE)
+    .lean();
+    
+  const agentIds = agents.map(a => a._id);
+  const agentMap = new Map(agents.map(a => [String(a._id), a]));
+
+  if (!agentIds.length) {
+    res.status(400);
+    throw new Error('No agents found for the selected scope.');
+  }
+
+  // 2. Fetch Assignments for Analytics
+  const assignmentQuery = { 
+    agent: { $in: agentIds },
+    createdAt: { $gte: rangeInfo.fromDate, $lte: rangeInfo.toDate } 
+  };
+  if (importBatchId) assignmentQuery.importBatch = importBatchId;
+  if (product) assignmentQuery.product = String(product).toLowerCase();
+
+  const assignments = await LeadAssignment.find(assignmentQuery)
+    .populate('lead')
+    .sort({ createdAt: -1 })
+    .lean();
+
+  // 3. Build Analytics for Summary Sheets
+  const analytics = buildDashboardAnalytics({
+    agents,
+    assignments,
+    rangeInfo,
+    includeTeamComparison: true,
+  });
+
+  // 4. Create Workbook
+  const wb = XLSX.utils.book_new();
+
+  // --- SHEET 1: PERFORMANCE SUMMARY ---
+  const summaryData = analytics.kpis.map(k => ({
+    'Metric': k.label,
+    'Value': k.value,
+    'Context': k.subLabel || ''
+  }));
+  const wsSummary = XLSX.utils.json_to_sheet(summaryData);
+  XLSX.utils.book_append_sheet(wb, wsSummary, 'Performance Summary');
+
+  // --- SHEET 2: AGENT LEADERBOARD ---
+  const leaderboardData = analytics.charts.agentSubmissions
+    .sort((a, b) => b.submissions - a.submissions)
+    .map((item, index) => {
+        const agent = agents.find(ag => ag.fullName === item.agent);
+        return {
+          'Rank': index + 1,
+          'Agent Name': item.agent,
+          'Team': agent?.team?.name || agent?.assignedTeam || 'Unassigned',
+          'Total Dials': item.dials || 0,
+          'Submissions': item.submissions || 0,
+          'Efficiency (%)': item.efficiency ? `${item.efficiency}%` : '0%',
+          'Conversion Rate (%)': item.dials > 0 ? `${((item.submissions / item.dials) * 100).toFixed(1)}%` : '0%'
+        };
+    });
+  const wsLeaderboard = XLSX.utils.json_to_sheet(leaderboardData);
+  XLSX.utils.book_append_sheet(wb, wsLeaderboard, 'Agent Rankings');
+
+  // --- SHEET 3: TREND ANALYSIS DATA ---
+  const trendData = analytics.charts.trend.map(t => ({
+    'Period': t.name,
+    'Dials': t.dials,
+    'Submissions': t.submissions,
+    'Activations': t.activations || 0
+  }));
+  const wsTrend = XLSX.utils.json_to_sheet(trendData);
+  XLSX.utils.book_append_sheet(wb, wsTrend, 'Trend Analysis');
+
+  // --- SHEET 4: DETAILED INTERACTION LOGS ---
+  const logData = assignments.map((assignment) => {
+    const agent = agentMap.get(String(assignment.agent));
+    const lead = assignment.lead || {};
+    const rawData = lead.rawData || {};
+
+    const companyName = rawData.Company || rawData.company || rawData['Company Name'] || rawData['COMPANY'] || '';
+    const customerName = rawData.Name || rawData.name || rawData['Customer Name'] || '';
+
+    return {
+      'Date': new Date(assignment.createdAt).toLocaleDateString(),
+      'Agent': agent?.fullName || 'Unknown',
+      'Team': agent?.team?.name || agent?.assignedTeam || 'Unassigned',
+      'Product': assignment.product?.toUpperCase() || '',
+      'Status': (assignment.status || 'NEW').toUpperCase(),
+      'Label/Name': customerName || (assignment.pipelineDisplayName || ''),
+      'Mobile Number': lead.contactNumber || assignment.pipelineDisplayContact || '',
+      'Company': companyName || '',
+      'Contactability': assignment.contactabilityStatus || '',
+      'Calling Remark': assignment.callingRemark || '',
+      'Interested Remark': assignment.interestedRemark || '',
+      'Not Interested Remark': assignment.notInterestedRemark || '',
+      'Agent Notes': assignment.agentNotes || '',
+      'Batch': assignment.batchName || '',
+    };
+  });
+  const wsLogs = XLSX.utils.json_to_sheet(logData);
+  
+  // Set column widths for Logs
+  wsLogs['!cols'] = [
+    { wch: 15 }, { wch: 20 }, { wch: 20 }, { wch: 15 }, { wch: 15 }, 
+    { wch: 25 }, { wch: 15 }, { wch: 25 }, { wch: 20 }, { wch: 20 }, 
+    { wch: 30 }, { wch: 30 }, { wch: 40 }, { wch: 20 }
+  ];
+  XLSX.utils.book_append_sheet(wb, wsLogs, 'Detailed Interaction Logs');
+
+  // 5. Finalize and Send
+  const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+  const fileName = `Analysis_${rangeInfo.range}_${new Date().getTime()}.xlsx`;
+
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+  
+  return res.send(buf);
+});
+
+export const saveReport = asyncHandler(async (req, res) => {
+  const { name, description, filters } = req.body;
+
+  if (!name) {
+    res.status(400);
+    throw new Error('Report name is required');
+  }
+
+  const savedReport = await SavedReport.create({
+    name,
+    description,
+    filters,
+    createdBy: req.user._id,
+  });
+
+  res.status(201).json({
+    success: true,
+    report: savedReport,
+  });
+});
+
+export const getSavedReports = asyncHandler(async (req, res) => {
+  const reports = await SavedReport.find({ createdBy: req.user._id })
+    .sort({ createdAt: -1 })
+    .lean();
+
+  res.status(200).json({
+    success: true,
+    reports,
+  });
+});
+
+export const deleteSavedReport = asyncHandler(async (req, res) => {
+  const report = await SavedReport.findOne({ _id: req.params.id, createdBy: req.user._id });
+
+  if (!report) {
+    res.status(404);
+    throw new Error('Report not found');
+  }
+
+  await report.deleteOne();
+
+  res.status(200).json({
+    success: true,
+    message: 'Report deleted successfully',
   });
 });
