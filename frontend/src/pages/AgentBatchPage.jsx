@@ -1392,88 +1392,98 @@ const AgentBatchPage = () => {
         </section>
       )}
 
-      {!isFocusMode && !isManagedView && pipelineDraft && (
-        <section className="rounded-2xl border border-amber-200 bg-amber-50 p-6 shadow-sm">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <h3 className="text-lg font-semibold text-slate-900">Add To Pipeline</h3>
-              <p className="mt-2 text-sm text-slate-600">
-                Choose one name column, one contact column, a follow-up date, and an optional note for the pipeline template.
-              </p>
+      {!isManagedView && pipelineDraft && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/35 p-4"
+          onClick={() => setPipelineDraft(null)}
+        >
+          <div
+            className="w-full max-w-4xl rounded-2xl border border-amber-200 bg-white shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 px-6 py-5">
+              <div>
+                <h3 className="text-lg font-semibold text-slate-900">Add To Pipeline</h3>
+                <p className="mt-2 text-sm text-slate-600">
+                  Choose one name column, one contact column, a follow-up date, and an optional note for the pipeline template.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPipelineDraft(null)}
+                className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              >
+                Close
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={() => setPipelineDraft(null)}
-              className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-white"
-            >
-              Close
-            </button>
+
+            <div className="px-6 py-5">
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <label className="text-sm font-medium text-slate-700">
+                  Name Column
+                  <select
+                    value={pipelineDraft.nameColumn}
+                    onChange={(event) => handlePipelineDraftChange('nameColumn', event.target.value)}
+                    className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2"
+                  >
+                    <option value="">Select name column</option>
+                    {[contactHeader, ...visibleReadOnlyHeaders].map((header) => (
+                      <option key={header} value={header}>
+                        {header}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="text-sm font-medium text-slate-700">
+                  Contact Column
+                  <select
+                    value={pipelineDraft.contactColumn}
+                    onChange={(event) => handlePipelineDraftChange('contactColumn', event.target.value)}
+                    className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2"
+                  >
+                    {[contactHeader, ...visibleReadOnlyHeaders].map((header) => (
+                      <option key={header} value={header}>
+                        {header}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="text-sm font-medium text-slate-700">
+                  Follow-up Date
+                  <input
+                    type="date"
+                    value={pipelineDraft.followUpDate}
+                    onChange={(event) => handlePipelineDraftChange('followUpDate', event.target.value)}
+                    className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2"
+                  />
+                </label>
+
+                <label className="text-sm font-medium text-slate-700">
+                  Pipeline Note
+                  <input
+                    type="text"
+                    value={pipelineDraft.note}
+                    onChange={(event) => handlePipelineDraftChange('note', event.target.value)}
+                    placeholder="Optional note"
+                    className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2"
+                  />
+                </label>
+              </div>
+
+              <div className="mt-5 flex justify-end">
+                <button
+                  type="button"
+                  onClick={submitPipelineDraft}
+                  className="rounded-xl bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700"
+                >
+                  Save Pipeline Row
+                </button>
+              </div>
+            </div>
           </div>
-
-          <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <label className="text-sm font-medium text-slate-700">
-              Name Column
-              <select
-                value={pipelineDraft.nameColumn}
-                onChange={(event) => handlePipelineDraftChange('nameColumn', event.target.value)}
-                className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2"
-              >
-                <option value="">Select name column</option>
-                {[contactHeader, ...visibleReadOnlyHeaders].map((header) => (
-                  <option key={header} value={header}>
-                    {header}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="text-sm font-medium text-slate-700">
-              Contact Column
-              <select
-                value={pipelineDraft.contactColumn}
-                onChange={(event) => handlePipelineDraftChange('contactColumn', event.target.value)}
-                className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2"
-              >
-                {[contactHeader, ...visibleReadOnlyHeaders].map((header) => (
-                  <option key={header} value={header}>
-                    {header}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="text-sm font-medium text-slate-700">
-              Follow-up Date
-              <input
-                type="date"
-                value={pipelineDraft.followUpDate}
-                onChange={(event) => handlePipelineDraftChange('followUpDate', event.target.value)}
-                className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2"
-              />
-            </label>
-
-            <label className="text-sm font-medium text-slate-700">
-              Pipeline Note
-              <input
-                type="text"
-                value={pipelineDraft.note}
-                onChange={(event) => handlePipelineDraftChange('note', event.target.value)}
-                placeholder="Optional note"
-                className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2"
-              />
-            </label>
-          </div>
-
-          <div className="mt-5">
-            <button
-              type="button"
-              onClick={submitPipelineDraft}
-              className="rounded-xl bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700"
-            >
-              Save Pipeline Row
-            </button>
-          </div>
-        </section>
+        </div>
       )}
 
       <section className={`${sheetSectionClassName} relative`}>

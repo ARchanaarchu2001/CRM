@@ -1,6 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { assignLeads, fetchAnalystLeadSelection, fetchAnalystLeads, fetchLeadMetadata } from '../api/leads.js';
+import {
+  assignLeads,
+  fetchAnalystLeadSelection,
+  fetchAnalystLeads,
+  fetchLeadMetadata,
+  unassignLeadAssignments,
+} from '../api/leads.js';
+import { useSheetLayout } from '../hooks/useSheetLayout.js';
 import { formatContactDisplay } from '../utils/contactNumber.js';
 
 const getDuplicateRowClasses = (duplicateStatus) => {
@@ -27,6 +34,19 @@ const DEFAULT_REMARK_CONFIG = {
 
 const DEFAULT_PAGE_SIZE = 100;
 const MAX_PAGE_SIZE = 200;
+const DEFAULT_ANALYST_COLUMN_WIDTHS = {
+  pick: 72,
+  contact: 220,
+  assignedAgent: 220,
+  status: 130,
+  contactabilityStatus: 180,
+  callAttempt1Date: 220,
+  callAttempt2Date: 220,
+  callingRemark: 180,
+  interestedRemark: 180,
+  notInterestedRemark: 190,
+  agentNotes: 220,
+};
 
 const escapeCsvValue = (value) => {
   const stringValue = String(value ?? '');
@@ -64,12 +84,14 @@ const AnalystDatasetPage = () => {
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [pageSizeInput, setPageSizeInput] = useState(String(DEFAULT_PAGE_SIZE));
   const [selectedLeadIds, setSelectedLeadIds] = useState([]);
+  const [selectedAssignmentIds, setSelectedAssignmentIds] = useState([]);
   const [lastSelectedIndex, setLastSelectedIndex] = useState(null);
   const [isDragSelecting, setIsDragSelecting] = useState(false);
   const [dragSelectionMode, setDragSelectionMode] = useState('select');
   const [actionMessage, setActionMessage] = useState('');
   const [copiedContact, setCopiedContact] = useState('');
   const [isAssigning, setIsAssigning] = useState(false);
+  const [isUnassigning, setIsUnassigning] = useState(false);
   const [isSelectionProcessing, setIsSelectionProcessing] = useState(false);
   const [customSelectCount, setCustomSelectCount] = useState('150');
   const rowRefs = useRef({});
@@ -98,6 +120,7 @@ const AnalystDatasetPage = () => {
     setPageSizeInput(String(response.pageSize || requestedPageSize));
     if (!preserveSelection) {
       setSelectedLeadIds([]);
+      setSelectedAssignmentIds([]);
       setLastSelectedIndex(null);
     }
   };
@@ -167,6 +190,50 @@ const AnalystDatasetPage = () => {
       `${agent.fullName || ''} ${agent.email || ''}`.toLowerCase().includes(safeSearch)
     );
   }, [agentSearch, agents]);
+  const selectedRowCount =
+    leadFilters.assignmentStatus === 'assigned' ? selectedAssignmentIds.length : selectedLeadIds.length;
+  const orderedAnalystColumnKeys = useMemo(() => {
+    const base = ['pick', 'contact'];
+    if (leadFilters.assignmentStatus === 'assigned') {
+      return [
+        ...base,
+        'assignedAgent',
+        ...visibleHeaders.map((header) => `raw:${header}`),
+        'status',
+        'contactabilityStatus',
+        'callAttempt1Date',
+        'callAttempt2Date',
+        'callingRemark',
+        'interestedRemark',
+        'notInterestedRemark',
+        'agentNotes',
+      ];
+    }
+
+    return [...base, ...visibleHeaders.map((header) => `raw:${header}`)];
+  }, [leadFilters.assignmentStatus, visibleHeaders]);
+  const {
+    isFocusMode,
+    setIsFocusMode,
+    isTableEditMode,
+    setIsTableEditMode,
+    fixedColumnKeys,
+    setFixedColumnKeys,
+    tableContainerRef,
+    tableElementRef,
+    bottomScrollbarRef,
+    tableScrollWidth,
+    orderedDisplayColumnKeys,
+    isFixedColumn,
+    getColumnStyle,
+    getPinnedClasses,
+    startColumnResize,
+  } = useSheetLayout({
+    storageKey: `analyst-sheet:${batchId}:${leadFilters.assignmentStatus || 'full'}`,
+    orderedColumnKeys: orderedAnalystColumnKeys,
+    defaultFixedColumnKeys: ['pick', 'contact'],
+    defaultColumnWidths: DEFAULT_ANALYST_COLUMN_WIDTHS,
+  });
 
   const exportRows = useMemo(() => {
     if (leadFilters.assignmentStatus === 'assigned') {
@@ -295,11 +362,52 @@ const AnalystDatasetPage = () => {
       }
       setSelectedLeadIds([]);
       setLastSelectedIndex(null);
-      await loadLeads(leadFilters, currentPage, { preserveSelection: false });
+      const nextFilters =
+        leadFilters.assignmentStatus === 'assigned'
+          ? leadFilters
+          : { ...leadFilters, assignmentStatus: 'unassigned' };
+      setLeadFilters(nextFilters);
+      await loadLeads(nextFilters, 1, { preserveSelection: false });
     } catch (error) {
       setActionMessage(error.response?.data?.message || 'Could not assign leads');
     } finally {
       setIsAssigning(false);
+    }
+  };
+
+  const toggleAssignment = (assignmentId) => {
+    setSelectedAssignmentIds((current) =>
+      current.includes(assignmentId)
+        ? current.filter((id) => id !== assignmentId)
+        : [...current, assignmentId]
+    );
+  };
+
+  const handleUnassign = async () => {
+    if (!selectedAssignmentIds.length) {
+      setActionMessage('Choose assigned rows before unassigning.');
+      return;
+    }
+
+    const selectedCount = selectedAssignmentIds.length;
+    const confirmed = window.confirm(
+      `Unassign ${selectedCount} selected assigned lead${selectedCount === 1 ? '' : 's'}? This removes those rows from the selected agents, but keeps the original dataset leads.`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setIsUnassigning(true);
+    try {
+      const response = await unassignLeadAssignments({ assignmentIds: selectedAssignmentIds });
+      setActionMessage(response.message || `Unassigned ${selectedCount} assigned lead${selectedCount === 1 ? '' : 's'}.`);
+      setSelectedAssignmentIds([]);
+      await loadLeads(leadFilters, currentPage, { preserveSelection: false });
+    } catch (error) {
+      setActionMessage(error.response?.data?.message || 'Could not unassign selected rows.');
+    } finally {
+      setIsUnassigning(false);
     }
   };
 
@@ -364,6 +472,7 @@ const AnalystDatasetPage = () => {
 
   const handleClearSelection = () => {
     setSelectedLeadIds([]);
+    setSelectedAssignmentIds([]);
     setLastSelectedIndex(null);
     setActionMessage('Selection cleared.');
   };
@@ -384,6 +493,22 @@ const AnalystDatasetPage = () => {
     } catch (error) {
       setActionMessage('Could not copy contact number');
     }
+  };
+
+  const getAnalystColumnLabel = (columnKey) => {
+    if (columnKey === 'pick') return 'Pick';
+    if (columnKey === 'contact') return contactHeader;
+    if (columnKey === 'assignedAgent') return 'Assigned Agent';
+    if (columnKey.startsWith('raw:')) return columnKey.replace('raw:', '');
+    if (columnKey === 'status') return 'Status';
+    if (columnKey === 'contactabilityStatus') return 'Contactability Status';
+    if (columnKey === 'callAttempt1Date') return activeRemarkConfig.callAttempt1Label;
+    if (columnKey === 'callAttempt2Date') return activeRemarkConfig.callAttempt2Label;
+    if (columnKey === 'callingRemark') return activeRemarkConfig.callingRemarkLabel;
+    if (columnKey === 'interestedRemark') return activeRemarkConfig.interestedRemarkLabel;
+    if (columnKey === 'notInterestedRemark') return activeRemarkConfig.notInterestedRemarkLabel;
+    if (columnKey === 'agentNotes') return 'Agent Notes';
+    return columnKey;
   };
 
   return (
@@ -491,7 +616,7 @@ const AnalystDatasetPage = () => {
                 <h3 className="mt-1 text-base font-semibold text-slate-900">Pick rows quickly</h3>
               </div>
               <div className="rounded-full bg-indigo-100 px-4 py-2 text-sm font-semibold text-indigo-700">
-                {selectedLeadIds.length} selected
+                {selectedRowCount} selected
               </div>
             </div>
 
@@ -503,17 +628,18 @@ const AnalystDatasetPage = () => {
               >
                 Export View
               </button>
-              {[50, 100, 200].map((count) => (
-                <button
-                  key={count}
-                  type="button"
-                  onClick={() => handleSelectFirst(count)}
-                  disabled={isSelectionProcessing}
-                  className="rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  First {count}
-                </button>
-              ))}
+              {leadFilters.assignmentStatus !== 'assigned' &&
+                [50, 100, 200].map((count) => (
+                  <button
+                    key={count}
+                    type="button"
+                    onClick={() => handleSelectFirst(count)}
+                    disabled={isSelectionProcessing}
+                    className="rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    First {count}
+                  </button>
+                ))}
               <button
                 type="button"
                 onClick={handleClearSelection}
@@ -523,68 +649,92 @@ const AnalystDatasetPage = () => {
               </button>
             </div>
 
-            <div className="mt-4 flex flex-wrap items-end gap-3">
-              <label className="min-w-[180px] flex-1 text-sm font-medium text-slate-700">
-                Custom count
-                <input
-                  type="number"
-                  min="1"
-                  step="1"
-                  value={customSelectCount}
-                  onChange={(event) => setCustomSelectCount(event.target.value)}
-                  className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2"
-                />
-              </label>
-              <button
-                type="button"
-                onClick={handleCustomSelectFirst}
-                disabled={isSelectionProcessing}
-                className="rounded-xl border border-indigo-300 bg-white px-4 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-50 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                Select Count
-              </button>
-            </div>
+            {leadFilters.assignmentStatus !== 'assigned' ? (
+              <div className="mt-4 flex flex-wrap items-end gap-3">
+                <label className="min-w-[180px] flex-1 text-sm font-medium text-slate-700">
+                  Custom count
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={customSelectCount}
+                    onChange={(event) => setCustomSelectCount(event.target.value)}
+                    className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2"
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={handleCustomSelectFirst}
+                  disabled={isSelectionProcessing}
+                  className="rounded-xl border border-indigo-300 bg-white px-4 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-50 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Select Count
+                </button>
+              </div>
+            ) : (
+              <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                Select assigned rows below to retrieve them from agents. If a lead has no other assignment after that, it returns to Unassigned.
+              </div>
+            )}
           </section>
 
           <section className="rounded-2xl border border-slate-200 bg-white p-4">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Assignment</p>
-              <h3 className="mt-1 text-base font-semibold text-slate-900">Send selected rows</h3>
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                {leadFilters.assignmentStatus === 'assigned' ? 'Retrieve' : 'Assignment'}
+              </p>
+              <h3 className="mt-1 text-base font-semibold text-slate-900">
+                {leadFilters.assignmentStatus === 'assigned' ? 'Unassign selected rows' : 'Send selected rows'}
+              </h3>
             </div>
 
             <div className="mt-4 flex flex-wrap items-end gap-3">
-              <label className="min-w-[220px] flex-1 text-sm font-medium text-slate-700">
-                Search agent
-                <input
-                  type="text"
-                  value={agentSearch}
-                  onChange={(event) => setAgentSearch(event.target.value)}
-                  placeholder="Search by name or email"
-                  className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2"
-                />
-              </label>
-              <label className="min-w-[260px] flex-1 text-sm font-medium text-slate-700">
-                Assign to agent
-                <select
-                  value={assignAgentId}
-                  onChange={(event) => setAssignAgentId(event.target.value)}
-                  className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2"
-                >
-                  <option value="">Select agent</option>
-                  {filteredAgents.map((agent) => (
-                    <option key={agent._id} value={agent._id}>
-                      {agent.fullName} ({agent.email})
-                    </option>
-                  ))}
-                </select>
-              </label>
+              {leadFilters.assignmentStatus !== 'assigned' && (
+                <>
+                  <label className="min-w-[220px] flex-1 text-sm font-medium text-slate-700">
+                    Search agent
+                    <input
+                      type="text"
+                      value={agentSearch}
+                      onChange={(event) => setAgentSearch(event.target.value)}
+                      placeholder="Search by name or email"
+                      className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2"
+                    />
+                  </label>
+                  <label className="min-w-[260px] flex-1 text-sm font-medium text-slate-700">
+                    Assign to agent
+                    <select
+                      value={assignAgentId}
+                      onChange={(event) => setAssignAgentId(event.target.value)}
+                      className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2"
+                    >
+                      <option value="">Select agent</option>
+                      {filteredAgents.map((agent) => (
+                        <option key={agent._id} value={agent._id}>
+                          {agent.fullName} ({agent.email})
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </>
+              )}
               <button
                 type="button"
-                onClick={handleAssign}
-                disabled={isAssigning}
-                className="rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
+                onClick={leadFilters.assignmentStatus === 'assigned' ? handleUnassign : handleAssign}
+                disabled={leadFilters.assignmentStatus === 'assigned' ? isUnassigning : isAssigning}
+                className={`rounded-xl px-5 py-2.5 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60 ${
+                  leadFilters.assignmentStatus === 'assigned'
+                    ? 'bg-rose-600 hover:bg-rose-700'
+                    : 'bg-indigo-600 hover:bg-indigo-700'
+                }`}
               >
-                {isAssigning ? 'Assigning...' : 'Assign Selected'}
+                {leadFilters.assignmentStatus === 'assigned'
+                  ? isUnassigning
+                    ? 'Unassigning...'
+                    : 'Unassign Selected'
+                  : isAssigning
+                    ? 'Assigning...'
+                    : 'Assign Selected'}
               </button>
             </div>
           </section>
@@ -639,95 +789,133 @@ const AnalystDatasetPage = () => {
         </div>
       </section>
 
-      <section className="relative rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="pointer-events-none sticky top-4 z-20 flex justify-end px-4 pt-4">
-          <div className="rounded-full bg-indigo-100 px-3 py-1 text-sm font-semibold text-indigo-700 shadow-sm">
-            {selectedLeadIds.length} selected
+      <section className={`relative rounded-2xl border border-slate-200 bg-white shadow-sm ${isFocusMode ? 'fixed inset-3 z-50 flex min-h-0 flex-col rounded-none border-0 shadow-2xl' : ''}`}>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setIsTableEditMode((current) => !current)}
+              className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+                isTableEditMode
+                  ? 'border-indigo-300 bg-indigo-50 text-indigo-700'
+                  : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
+              }`}
+            >
+              {isTableEditMode ? 'Done Editing Table' : 'Edit Table'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsFocusMode((current) => !current)}
+              className="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              {isFocusMode ? 'Exit Expanded Sheet' : 'Expand Sheet'}
+            </button>
+            <div className="rounded-full bg-white px-3 py-1 text-xs font-medium text-slate-600 ring-1 ring-slate-200">
+              Fixed: {fixedColumnKeys.map((key) => getAnalystColumnLabel(key)).join(', ')}
+            </div>
           </div>
         </div>
-        <div className="overflow-auto pt-4">
-          <table className="min-w-[1400px] divide-y divide-slate-200 text-sm">
-            <thead className="sticky top-0 z-10 bg-slate-100">
+        <div className="pointer-events-none sticky top-4 z-20 flex justify-end px-4 pt-4">
+          <div className="rounded-full bg-indigo-100 px-3 py-1 text-sm font-semibold text-indigo-700 shadow-sm">
+            {selectedRowCount} selected
+          </div>
+        </div>
+        <div ref={tableContainerRef} className="min-h-0 flex-1 overflow-auto pt-4">
+          <table ref={tableElementRef} className="min-w-[1400px] border-separate border-spacing-0 text-[12px] font-medium leading-4 text-black">
+            <thead>
               <tr>
-                {leadFilters.assignmentStatus !== 'assigned' && (
-                  <th className="sticky left-0 z-30 border-r border-slate-200 bg-slate-100 px-3 py-3 text-left font-semibold text-slate-700 shadow-[6px_0_8px_-8px_rgba(15,23,42,0.28)]">
-                    Pick
-                  </th>
-                )}
-                <th
-                  className={`sticky z-30 border-r border-slate-200 bg-slate-100 px-3 py-3 text-left font-semibold text-slate-700 shadow-[6px_0_8px_-8px_rgba(15,23,42,0.28)] ${
-                    leadFilters.assignmentStatus === 'assigned' ? 'left-0' : 'left-[72px]'
-                  }`}
-                >
-                  {contactHeader}
-                </th>
-                {leadFilters.assignmentStatus === 'assigned' && (
-                  <>
-                    <th className="px-3 py-3 text-left font-semibold text-slate-700">Assigned Agent</th>
-                  </>
-                )}
-                {visibleHeaders.map((header) => (
-                  <th key={header} className="px-3 py-3 text-left font-semibold text-slate-700">
-                    {header}
+                {orderedDisplayColumnKeys.map((columnKey) => (
+                  <th
+                    key={`header-${columnKey}`}
+                    className={getPinnedClasses(
+                      columnKey,
+                      'relative sticky top-0 whitespace-nowrap align-top border-b border-r border-black px-2 py-2 text-left text-[12px] font-semibold text-slate-700',
+                      'bg-slate-100',
+                      columnKey === 'pick' ? 'z-40' : 'z-30'
+                    )}
+                    style={getColumnStyle(columnKey)}
+                  >
+                    <div className="flex min-w-0 items-start justify-between gap-2">
+                      <span className="min-w-0 truncate">{getAnalystColumnLabel(columnKey)}</span>
+                      {isTableEditMode && columnKey !== 'pick' ? (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setFixedColumnKeys((current) =>
+                              current.includes(columnKey)
+                                ? current.filter((key) => key !== columnKey)
+                                : [...current, columnKey]
+                            )
+                          }
+                          className={`rounded px-2 py-1 text-[10px] font-bold uppercase tracking-wide ${
+                            isFixedColumn(columnKey)
+                              ? 'bg-indigo-600 text-white'
+                              : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
+                          }`}
+                        >
+                          {isFixedColumn(columnKey) ? 'Fixed' : 'Pin'}
+                        </button>
+                      ) : null}
+                    </div>
+                    <button
+                      type="button"
+                      onPointerDown={(event) => startColumnResize(event, columnKey)}
+                      className="absolute top-0 right-[-5px] bottom-0 z-[60] w-[10px] cursor-col-resize bg-transparent"
+                      title="Drag to resize column"
+                    >
+                      <span className="pointer-events-none absolute top-0 bottom-0 left-1/2 w-px -translate-x-1/2 bg-slate-300" />
+                      <span className="pointer-events-none absolute top-1 bottom-1 left-1/2 w-[3px] -translate-x-1/2 rounded-full bg-slate-500/80" />
+                    </button>
                   </th>
                 ))}
-                {leadFilters.assignmentStatus === 'assigned' && (
-                  <>
-                    <th className="px-3 py-3 text-left font-semibold text-slate-700">Status</th>
-                    <th className="px-3 py-3 text-left font-semibold text-slate-700">Contactability Status</th>
-                    <th className="px-3 py-3 text-left font-semibold text-slate-700">
-                      {activeRemarkConfig.callAttempt1Label}
-                    </th>
-                    <th className="px-3 py-3 text-left font-semibold text-slate-700">
-                      {activeRemarkConfig.callAttempt2Label}
-                    </th>
-                    <th className="px-3 py-3 text-left font-semibold text-slate-700">
-                      {activeRemarkConfig.callingRemarkLabel}
-                    </th>
-                    <th className="px-3 py-3 text-left font-semibold text-slate-700">
-                      {activeRemarkConfig.interestedRemarkLabel}
-                    </th>
-                    <th className="px-3 py-3 text-left font-semibold text-slate-700">
-                      {activeRemarkConfig.notInterestedRemarkLabel}
-                    </th>
-                    <th className="px-3 py-3 text-left font-semibold text-slate-700">Agent Notes</th>
-                  </>
-                )}
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 bg-white">
+            <tbody className="bg-white">
               {leadFilters.assignmentStatus === 'assigned'
                 ? assignedRows.map((assignment) => {
                     const lead = assignment.lead || {};
                     return (
                       <tr key={assignment._id} className={getDuplicateRowClasses(lead.duplicateStatus)}>
-                        <td className="sticky left-0 z-20 border-r border-slate-200 bg-white px-3 py-2 font-medium text-slate-900 shadow-[6px_0_8px_-8px_rgba(15,23,42,0.28)]">
-                          <button
-                            type="button"
-                            onClick={() => handleCopyContact(lead.rawData?.[contactHeader] || lead.contactNumber)}
-                            className="rounded px-1 py-0.5 text-left text-indigo-700 hover:bg-indigo-50 hover:text-indigo-900"
-                            title="Click to copy number"
-                          >
-                            {formatContactDisplay(lead.rawData?.[contactHeader] || lead.contactNumber)}
-                            {copiedContact === formatContactDisplay(lead.rawData?.[contactHeader] || lead.contactNumber)
-                              ? ' copied'
-                              : ''}
-                          </button>
-                        </td>
-                        <td className="px-3 py-2 text-slate-700">{assignment.assignedAgentName || '—'}</td>
-                        {visibleHeaders.map((header) => (
-                          <td key={`${assignment._id}-${header}`} className="px-3 py-2 text-slate-700">
-                            {lead.rawData?.[header] || '—'}
-                          </td>
-                        ))}
-                        <td className="px-3 py-2 text-slate-700">{assignment.status || 'new'}</td>
-                        <td className="px-3 py-2 text-slate-700">{assignment.contactabilityStatus || '—'}</td>
-                        <td className="px-3 py-2 text-slate-700">{assignment.callAttempt1Date || '—'}</td>
-                        <td className="px-3 py-2 text-slate-700">{assignment.callAttempt2Date || '—'}</td>
-                        <td className="px-3 py-2 text-slate-700">{assignment.callingRemark || '—'}</td>
-                        <td className="px-3 py-2 text-slate-700">{assignment.interestedRemark || '—'}</td>
-                        <td className="px-3 py-2 text-slate-700">{assignment.notInterestedRemark || '—'}</td>
-                        <td className="px-3 py-2 text-slate-700">{assignment.agentNotes || '—'}</td>
+                        {orderedDisplayColumnKeys.map((columnKey) => {
+                          const cellClassName = getPinnedClasses(
+                            columnKey,
+                            'h-9 border-b border-r border-black px-2 py-1.5 text-black',
+                            'bg-white',
+                            columnKey === 'pick' ? 'z-20' : 'z-10'
+                          );
+
+                          if (columnKey === 'pick') {
+                            return (
+                              <td key={`${assignment._id}-${columnKey}`} className={cellClassName} style={getColumnStyle(columnKey)}>
+                                <input
+                                  type="checkbox"
+                                  checked={selectedAssignmentIds.includes(assignment._id)}
+                                  onChange={() => toggleAssignment(assignment._id)}
+                                />
+                              </td>
+                            );
+                          }
+                          if (columnKey === 'contact') {
+                            return (
+                              <td key={`${assignment._id}-${columnKey}`} className={cellClassName} style={getColumnStyle(columnKey)}>
+                                <button
+                                  type="button"
+                                  onClick={() => handleCopyContact(lead.rawData?.[contactHeader] || lead.contactNumber)}
+                                  className="rounded px-1 py-0.5 text-left text-black hover:bg-indigo-50"
+                                >
+                                  {formatContactDisplay(lead.rawData?.[contactHeader] || lead.contactNumber)}
+                                  {copiedContact === formatContactDisplay(lead.rawData?.[contactHeader] || lead.contactNumber) ? ' copied' : ''}
+                                </button>
+                              </td>
+                            );
+                          }
+                          if (columnKey === 'assignedAgent') return <td key={`${assignment._id}-${columnKey}`} className={cellClassName} style={getColumnStyle(columnKey)}>{assignment.assignedAgentName || '—'}</td>;
+                          if (columnKey.startsWith('raw:')) {
+                            const header = columnKey.replace('raw:', '');
+                            return <td key={`${assignment._id}-${columnKey}`} className={cellClassName} style={getColumnStyle(columnKey)}>{lead.rawData?.[header] || '—'}</td>;
+                          }
+                          return <td key={`${assignment._id}-${columnKey}`} className={cellClassName} style={getColumnStyle(columnKey)}>{assignment[columnKey] || '—'}</td>;
+                        })}
                       </tr>
                     );
                   })
@@ -741,43 +929,63 @@ const AnalystDatasetPage = () => {
                       }}
                       className={getDuplicateRowClasses(lead.duplicateStatus)}
                     >
-                      <td
-                        className="sticky left-0 z-20 cursor-pointer border-r border-slate-200 bg-white px-3 py-2 shadow-[6px_0_8px_-8px_rgba(15,23,42,0.28)]"
-                        onMouseDown={(event) => {
-                          event.preventDefault();
-                          handleLeadMouseDown(lead._id, index);
-                        }}
-                        onMouseEnter={() => handleLeadMouseEnter(lead._id)}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={selectedLeadIds.includes(lead._id)}
-                          readOnly
-                          className="pointer-events-none"
-                        />
-                      </td>
-                      <td className="sticky left-[72px] z-20 border-r border-slate-200 bg-white px-3 py-2 font-medium text-slate-900 shadow-[6px_0_8px_-8px_rgba(15,23,42,0.28)]">
-                        <button
-                          type="button"
-                          onClick={() => handleCopyContact(lead.rawData?.[contactHeader] || lead.contactNumber)}
-                          className="rounded px-1 py-0.5 text-left text-indigo-700 hover:bg-indigo-50 hover:text-indigo-900"
-                          title="Click to copy number"
-                        >
-                          {formatContactDisplay(lead.rawData?.[contactHeader] || lead.contactNumber)}
-                          {copiedContact === formatContactDisplay(lead.rawData?.[contactHeader] || lead.contactNumber)
-                            ? ' copied'
-                            : ''}
-                        </button>
-                      </td>
-                      {visibleHeaders.map((header) => (
-                        <td key={`${lead._id}-${header}`} className="px-3 py-2 text-slate-700">
-                          {lead.rawData?.[header] || '—'}
-                        </td>
-                      ))}
+                      {orderedDisplayColumnKeys.map((columnKey) => {
+                        const cellClassName = getPinnedClasses(
+                          columnKey,
+                          'h-9 border-b border-r border-black px-2 py-1.5 text-black',
+                          'bg-white',
+                          columnKey === 'pick' ? 'z-20' : 'z-10'
+                        );
+                        if (columnKey === 'pick') {
+                          return (
+                            <td
+                              key={`${lead._id}-${columnKey}`}
+                              className={`${cellClassName} cursor-pointer`}
+                              style={getColumnStyle(columnKey)}
+                              onMouseDown={(event) => {
+                                event.preventDefault();
+                                handleLeadMouseDown(lead._id, index);
+                              }}
+                              onMouseEnter={() => handleLeadMouseEnter(lead._id)}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={selectedLeadIds.includes(lead._id)}
+                                readOnly
+                                className="pointer-events-none"
+                              />
+                            </td>
+                          );
+                        }
+                        if (columnKey === 'contact') {
+                          return (
+                            <td key={`${lead._id}-${columnKey}`} className={cellClassName} style={getColumnStyle(columnKey)}>
+                              <button
+                                type="button"
+                                onClick={() => handleCopyContact(lead.rawData?.[contactHeader] || lead.contactNumber)}
+                                className="rounded px-1 py-0.5 text-left text-black hover:bg-indigo-50"
+                              >
+                                {formatContactDisplay(lead.rawData?.[contactHeader] || lead.contactNumber)}
+                                {copiedContact === formatContactDisplay(lead.rawData?.[contactHeader] || lead.contactNumber) ? ' copied' : ''}
+                              </button>
+                            </td>
+                          );
+                        }
+                        if (columnKey.startsWith('raw:')) {
+                          const header = columnKey.replace('raw:', '');
+                          return <td key={`${lead._id}-${columnKey}`} className={cellClassName} style={getColumnStyle(columnKey)}>{lead.rawData?.[header] || '—'}</td>;
+                        }
+                        return <td key={`${lead._id}-${columnKey}`} className={cellClassName} style={getColumnStyle(columnKey)}>-</td>;
+                      })}
                     </tr>
                   ))}
             </tbody>
           </table>
+        </div>
+        <div className="border-t border-slate-200 bg-white px-4 py-1">
+          <div ref={bottomScrollbarRef} className="overflow-x-scroll overflow-y-hidden">
+            <div style={{ width: `${tableScrollWidth}px`, height: '12px' }} />
+          </div>
         </div>
       </section>
 

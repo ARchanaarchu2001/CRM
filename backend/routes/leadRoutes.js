@@ -14,8 +14,6 @@ import {
   getMyPipelineSummary,
   getAnalystLeads,
   getLeadMetadata,
-  getAdvancedReportData,
-  exportAdvancedReportDetail,
   getTeamLeadConversionOverview,
   getMyAssignments,
   getUploadMiddleware,
@@ -24,10 +22,8 @@ import {
   previewLeadImport,
   restoreAssignmentBatch,
   updateAssignmentOutcome,
+  unassignLeadAssignments,
   upsertRemarkConfig,
-  saveReport,
-  getSavedReports,
-  deleteSavedReport,
 } from '../controllers/leadController.js';
 import { protect, authorizeRoles } from '../middleware/authMiddleware.js';
 import { ROLES } from '../constants/roles.js';
@@ -39,8 +35,6 @@ router.use(protect);
 router.get('/metadata', authorizeRoles(ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN), getLeadMetadata);
 router.get('/analyst/batches', authorizeRoles(ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN), getAnalystBatches);
 router.get('/analyst/overview', authorizeRoles(ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN), getAnalystPerformanceOverview);
-router.get('/analyst/reports', authorizeRoles(ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN), getAdvancedReportData);
-router.get('/analyst/reports/export', authorizeRoles(ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN), exportAdvancedReportDetail);
 router.get('/analyst/selection', authorizeRoles(ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN), getAnalystLeadSelection);
 router.get('/analyst', authorizeRoles(ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN), getAnalystLeads);
 router.get(
@@ -84,6 +78,11 @@ router.post(
   '/assign',
   authorizeRoles(ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN),
   assignLeadsToAgent
+);
+router.post(
+  '/unassign',
+  authorizeRoles(ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN),
+  unassignLeadAssignments
 );
 router.delete(
   '/analyst/batches/:importBatchId',
@@ -130,10 +129,5 @@ router.put(
   authorizeRoles(ROLES.AGENT, ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN),
   updateAssignmentOutcome
 );
-
-// Saved Reports
-router.post('/reports/saved', authorizeRoles(ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN), saveReport);
-router.get('/reports/saved', authorizeRoles(ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN), getSavedReports);
-router.delete('/reports/saved/:id', authorizeRoles(ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN), deleteSavedReport);
 
 export default router;

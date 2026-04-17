@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { fetchManagedAgentQueueView, fetchMyAssignments, updateAssignment } from '../api/leads.js';
+import { useSheetLayout } from '../hooks/useSheetLayout.js';
 import { formatContactDisplay } from '../utils/contactNumber.js';
 
 const AUTOSAVE_DELAY_MS = 700;
@@ -42,6 +43,23 @@ const DEFAULT_REMARK_CONFIG = {
   ],
   notInterestedRemarks: ['Bad Experience'],
 };
+const MIN_COLUMN_WIDTH = 56;
+const DEFAULT_QUEUE_COLUMN_WIDTHS = {
+  contact: 220,
+  product: 120,
+  batchName: 220,
+  contactabilityStatus: 180,
+  callAttempt1Date: 220,
+  callAttempt2Date: 220,
+  callingRemark: 180,
+  interestedRemark: 180,
+  notInterestedRemark: 190,
+  agentNotes: 220,
+  status: 140,
+  pipeline: 120,
+  saveState: 170,
+};
+const DEFAULT_QUEUE_FIXED_COLUMNS = ['contact'];
 
 const getRemarkValueClasses = (columnKey, value) => {
   const normalizedValue = String(value || '').trim().toLowerCase();
@@ -123,6 +141,7 @@ const AgentQueuePage = () => {
   const [pipelineDraft, setPipelineDraft] = useState(null);
   const [agentName, setAgentName] = useState('');
   const [persistedRemarkConfig, setPersistedRemarkConfig] = useState(DEFAULT_REMARK_CONFIG);
+  const [pendingSessionRowIds, setPendingSessionRowIds] = useState([]);
   const timersRef = useRef(new Map());
 
   const loadAssignments = async () => {
@@ -142,6 +161,26 @@ const AgentQueuePage = () => {
   }, [queueType, agentId, isManagedView]);
 
   useEffect(() => {
+    if (queueType !== 'pending') {
+      setPendingSessionRowIds([]);
+      return;
+    }
+
+    setPendingSessionRowIds((current) => {
+      const nextIds = assignments
+        .filter((assignment) => matchesQueueType(assignment, 'pending'))
+        .map((assignment) => assignment._id);
+
+      if (!current.length) {
+        return nextIds;
+      }
+
+      const merged = new Set([...current, ...nextIds]);
+      return Array.from(merged);
+    });
+  }, [assignments, queueType]);
+
+  useEffect(() => {
     return () => {
       for (const timer of timersRef.current.values()) {
         clearTimeout(timer);
@@ -150,8 +189,15 @@ const AgentQueuePage = () => {
   }, []);
 
   const visibleAssignments = useMemo(
-    () => assignments.filter((assignment) => matchesQueueType(assignment, queueType)),
-    [assignments, queueType]
+    () =>
+      assignments.filter((assignment) => {
+        if (queueType !== 'pending') {
+          return matchesQueueType(assignment, queueType);
+        }
+
+        return matchesQueueType(assignment, 'pending') || pendingSessionRowIds.includes(assignment._id);
+      }),
+    [assignments, pendingSessionRowIds, queueType]
   );
 
   useEffect(() => {
@@ -171,6 +217,66 @@ const AgentQueuePage = () => {
 
   const contactHeader = visibleAssignments[0]?.lead?.contactColumn || 'Contact';
   const visibleReadOnlyHeaders = readOnlyHeaders.filter((header) => header !== contactHeader);
+
+  const orderedColumnKeys = useMemo(
+    () => [
+      'contact',
+      'product',
+      'batchName',
+      ...visibleReadOnlyHeaders.map((header) => `raw:${header}`),
+      'contactabilityStatus',
+      'callAttempt1Date',
+      'callAttempt2Date',
+      'callingRemark',
+      'interestedRemark',
+      'notInterestedRemark',
+      'agentNotes',
+      'status',
+      'pipeline',
+      'saveState',
+    ],
+    [visibleReadOnlyHeaders]
+  );
+  const {
+    isFocusMode,
+    setIsFocusMode,
+    isTableEditMode,
+    setIsTableEditMode,
+    fixedColumnKeys,
+    setFixedColumnKeys,
+    tableContainerRef,
+    tableElementRef,
+    bottomScrollbarRef,
+    tableScrollWidth,
+    orderedDisplayColumnKeys,
+    isFixedColumn,
+    getColumnStyle,
+    getPinnedClasses,
+    startColumnResize,
+  } = useSheetLayout({
+    storageKey: `agent-queue-layout:${isManagedView ? agentId || 'managed' : 'self'}:${queueType || 'default'}`,
+    orderedColumnKeys,
+    defaultFixedColumnKeys: DEFAULT_QUEUE_FIXED_COLUMNS,
+    defaultColumnWidths: DEFAULT_QUEUE_COLUMN_WIDTHS,
+  });
+
+  const getColumnLabel = (columnKey) => {
+    if (columnKey === 'contact') return contactHeader;
+    if (columnKey === 'product') return 'Product';
+    if (columnKey === 'batchName') return 'Dataset';
+    if (columnKey.startsWith('raw:')) return columnKey.replace('raw:', '');
+    if (columnKey === 'contactabilityStatus') return 'Contactability Status';
+    if (columnKey === 'callAttempt1Date') return 'Call Attempt 1 - Date';
+    if (columnKey === 'callAttempt2Date') return 'Call Attempt 2 - Date';
+    if (columnKey === 'callingRemark') return 'Calling Remarks';
+    if (columnKey === 'interestedRemark') return 'Interested Remarks';
+    if (columnKey === 'notInterestedRemark') return 'Not Interested Remarks';
+    if (columnKey === 'agentNotes') return 'Agent Notes';
+    if (columnKey === 'status') return 'Status';
+    if (columnKey === 'pipeline') return 'Pipeline';
+    if (columnKey === 'saveState') return 'Save State';
+    return columnKey;
+  };
 
   const findDefaultNameColumn = (headers = []) =>
     headers.find((header) => /^(name|customer name|lead name|full name)$/i.test(header)) ||
@@ -230,6 +336,11 @@ const AgentQueuePage = () => {
         if (assignment._id !== assignmentId) {
           return assignment;
         }
+        if (queueType === 'pending') {
+          setPendingSessionRowIds((currentPendingIds) =>
+            currentPendingIds.includes(assignmentId) ? currentPendingIds : [...currentPendingIds, assignmentId]
+          );
+        }
         const nextAssignment = { ...assignment, [field]: value };
         queueAutosave(nextAssignment);
         return nextAssignment;
@@ -257,6 +368,11 @@ const AgentQueuePage = () => {
         assignment.callAttempt1Date ||
         assignment.callAttempt2Date
     );
+
+  const isSoftVisiblePendingRow = (assignment) =>
+    queueType === 'pending' &&
+    pendingSessionRowIds.includes(assignment._id) &&
+    !matchesQueueType(assignment, 'pending');
 
   const handleCopyContact = async (assignmentId, value) => {
     const contactValue = formatContactDisplay(value);
@@ -343,8 +459,8 @@ const AgentQueuePage = () => {
   };
 
   return (
-    <div className="space-y-6">
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+    <div className={isFocusMode ? 'fixed inset-3 z-50 flex flex-col overflow-hidden rounded-2xl border border-slate-300 bg-white shadow-2xl' : 'space-y-6'}>
+      <section className={`rounded-2xl border border-slate-200 bg-white p-6 shadow-sm ${isFocusMode ? 'rounded-none border-0 border-b shadow-none' : ''}`}>
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <h2 className="text-xl font-semibold text-slate-900">{getQueueLabel(queueType)}</h2>
@@ -365,6 +481,20 @@ const AgentQueuePage = () => {
 
         <div className="mt-5 flex flex-wrap gap-3 text-sm">
           <div className="rounded-2xl bg-slate-50 px-4 py-3 text-slate-700">{visibleAssignments.length} rows in this queue</div>
+          {queueType === 'pending' ? (
+            <div className="rounded-2xl bg-amber-50 px-4 py-3 text-amber-800">
+              Updated rows stay visible until refresh so you can finish remarks.
+            </div>
+          ) : null}
+          {!isManagedView ? (
+            <button
+              type="button"
+              onClick={() => setIsFocusMode((current) => !current)}
+              className="rounded-2xl border border-slate-300 bg-white px-4 py-3 font-medium text-slate-700 hover:bg-slate-50"
+            >
+              {isFocusMode ? 'Exit Expanded Sheet' : 'Expand Sheet'}
+            </button>
+          ) : null}
         </div>
 
         {message && <p className="mt-4 text-sm text-slate-600">{message}</p>}
@@ -461,39 +591,86 @@ const AgentQueuePage = () => {
         </section>
       )}
 
-      <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="overflow-auto">
-          <table className="min-w-[2050px] divide-y divide-slate-200 text-sm">
-            <thead className="sticky top-0 z-10 bg-slate-100">
+      <section className={`rounded-2xl border border-slate-200 bg-white shadow-sm ${isFocusMode ? 'flex min-h-0 flex-1 flex-col rounded-none border-0 shadow-none' : ''}`}>
+        {!isManagedView ? (
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setIsTableEditMode((current) => !current)}
+                className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+                  isTableEditMode
+                    ? 'border-indigo-300 bg-indigo-50 text-indigo-700'
+                    : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                {isTableEditMode ? 'Done Editing Table' : 'Edit Table'}
+              </button>
+              <div className="rounded-full bg-white px-3 py-1 text-xs font-medium text-slate-600 ring-1 ring-slate-200">
+                Fixed: {fixedColumnKeys.map((key) => getColumnLabel(key)).join(', ')}
+              </div>
+            </div>
+          </div>
+        ) : null}
+        <div ref={tableContainerRef} className="min-h-0 flex-1 overflow-auto">
+          <table ref={tableElementRef} className="min-w-[2050px] border-separate border-spacing-0 text-[12px] font-medium leading-4 text-black">
+            <thead>
               <tr>
-                <th className="sticky left-0 z-30 border-r border-slate-200 bg-slate-100 px-3 py-3 text-left font-semibold text-slate-700 shadow-[6px_0_8px_-8px_rgba(15,23,42,0.28)]">
-                  {contactHeader}
-                </th>
-                <th className="px-3 py-3 text-left font-semibold text-slate-700">Product</th>
-                <th className="px-3 py-3 text-left font-semibold text-slate-700">Dataset</th>
-                {visibleReadOnlyHeaders.map((header) => (
-                  <th key={header} className="px-3 py-3 text-left font-semibold text-slate-700">
-                    {header}
+                {orderedDisplayColumnKeys.map((columnKey) => (
+                  <th
+                    key={`header-${columnKey}`}
+                    className={getPinnedClasses(
+                      columnKey,
+                      'relative sticky top-0 whitespace-nowrap align-top border-b border-r border-black px-2 py-2 text-left text-[12px] font-semibold text-slate-700',
+                      'bg-slate-100',
+                      columnKey === 'contact' ? 'z-40' : 'z-30'
+                    )}
+                    style={getColumnStyle(columnKey)}
+                  >
+                    <div className="flex min-w-0 items-start justify-between gap-2">
+                      <span className="min-w-0 truncate">{getColumnLabel(columnKey)}</span>
+                      {isTableEditMode && !isManagedView && columnKey !== 'contact' ? (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setFixedColumnKeys((current) =>
+                              current.includes(columnKey)
+                                ? current.filter((key) => key !== columnKey)
+                                : [...current, columnKey]
+                            )
+                          }
+                          className={`rounded px-2 py-1 text-[10px] font-bold uppercase tracking-wide ${
+                            isFixedColumn(columnKey)
+                              ? 'bg-indigo-600 text-white'
+                              : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
+                          }`}
+                        >
+                          {isFixedColumn(columnKey) ? 'Fixed' : 'Pin'}
+                        </button>
+                      ) : null}
+                    </div>
+                    {!isManagedView ? (
+                      <button
+                        type="button"
+                        onPointerDown={(event) => startColumnResize(event, columnKey)}
+                        className="absolute top-0 right-[-5px] bottom-0 z-[60] w-[10px] cursor-col-resize bg-transparent"
+                        title="Drag to resize column"
+                      >
+                        <span className="pointer-events-none absolute top-0 bottom-0 left-1/2 w-px -translate-x-1/2 bg-slate-300" />
+                        <span className="pointer-events-none absolute top-1 bottom-1 left-1/2 w-[3px] -translate-x-1/2 rounded-full bg-slate-500/80" />
+                      </button>
+                    ) : null}
                   </th>
                 ))}
-                <th className="px-3 py-3 text-left font-semibold text-slate-700">Contactability Status</th>
-                <th className="px-3 py-3 text-left font-semibold text-slate-700">Call Attempt 1 - Date</th>
-                <th className="px-3 py-3 text-left font-semibold text-slate-700">Call Attempt 2 - Date</th>
-                <th className="px-3 py-3 text-left font-semibold text-slate-700">Calling Remarks</th>
-                <th className="px-3 py-3 text-left font-semibold text-slate-700">Interested Remarks</th>
-                <th className="px-3 py-3 text-left font-semibold text-slate-700">Not Interested Remarks</th>
-                <th className="px-3 py-3 text-left font-semibold text-slate-700">Agent Notes</th>
-                <th className="px-3 py-3 text-left font-semibold text-slate-700">Status</th>
-                <th className="px-3 py-3 text-left font-semibold text-slate-700">Pipeline</th>
-                <th className="px-3 py-3 text-left font-semibold text-slate-700">Save State</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 bg-white">
+            <tbody className="bg-white">
               {visibleAssignments.map((assignment) => {
                 const lead = assignment.lead || {};
                 const remarks = assignment.remarkConfig || persistedRemarkConfig || DEFAULT_REMARK_CONFIG;
                 const isCopiedRow = copiedRowId === assignment._id;
                 const isCalledRow = isCalledAssignment(assignment);
+                const isSoftVisibleRow = isSoftVisiblePendingRow(assignment);
                 return (
                   <tr
                     key={assignment._id}
@@ -505,102 +682,163 @@ const AgentQueuePage = () => {
                           : ''
                     }
                   >
-                    <td className={`sticky left-0 z-20 border-r border-slate-300 px-3 py-2 font-medium text-slate-900 shadow-[8px_0_12px_-10px_rgba(15,23,42,0.34)] ${isCopiedRow ? 'bg-amber-50' : isCalledRow ? 'bg-emerald-50' : 'bg-white'}`}>
-                      <button
-                        type="button"
-                        onClick={() => handleCopyContact(assignment._id, lead.rawData?.[contactHeader] || lead.contactNumber)}
-                        className="flex items-center gap-2 rounded px-1 py-0.5 text-left text-indigo-700 hover:bg-indigo-50 hover:text-indigo-900"
-                      >
-                        <span
-                          className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full text-[11px] font-bold ${
-                            isCalledRow ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-500'
-                          }`}
-                        >
-                          {isCalledRow ? '✓' : '•'}
-                        </span>
-                        {formatContactDisplay(lead.rawData?.[contactHeader] || lead.contactNumber)}
-                        {isCopiedRow ? <span className="text-xs font-semibold uppercase tracking-wide text-amber-700">Copied</span> : null}
-                      </button>
-                    </td>
-                    <td className="px-3 py-2 text-slate-700">{assignment.product?.toUpperCase() || '—'}</td>
-                    <td className="px-3 py-2 text-slate-700">{assignment.batchName}</td>
-                    {visibleReadOnlyHeaders.map((header) => (
-                      <td key={`${assignment._id}-${header}`} className="px-3 py-2 text-slate-600">
-                        {lead.rawData?.[header] || '—'}
-                      </td>
-                    ))}
-                    <td className="px-3 py-2">
-                      <select disabled={isManagedView} value={assignment.contactabilityStatus || ''} onChange={(e) => handleFieldChange(assignment._id, 'contactabilityStatus', e.target.value)} className="w-[170px] rounded-lg border border-slate-300 px-2 py-1 disabled:bg-slate-50 disabled:text-slate-500">
-                        <option value="">Select</option>
-                        {(remarks.contactabilityStatuses || []).map((status) => <option key={status} value={status}>{status}</option>)}
-                      </select>
-                    </td>
-                    <td className="px-3 py-2">
-                      <div className="flex min-w-[220px] gap-2">
-                        <input disabled={isManagedView} type="date" value={splitAttemptValue(assignment.callAttempt1Date).date} onChange={(e) => handleAttemptChange(assignment, 'callAttempt1Date', 'date', e.target.value)} className="w-[135px] rounded-lg border border-slate-300 px-2 py-1 disabled:bg-slate-50 disabled:text-slate-500" />
-                        <input disabled={isManagedView} type="time" value={splitAttemptValue(assignment.callAttempt1Date).time} onChange={(e) => handleAttemptChange(assignment, 'callAttempt1Date', 'time', e.target.value)} className="w-[95px] rounded-lg border border-slate-300 px-2 py-1 disabled:bg-slate-50 disabled:text-slate-500" />
-                      </div>
-                    </td>
-                    <td className="px-3 py-2">
-                      <div className="flex min-w-[220px] gap-2">
-                        <input disabled={isManagedView} type="date" value={splitAttemptValue(assignment.callAttempt2Date).date} onChange={(e) => handleAttemptChange(assignment, 'callAttempt2Date', 'date', e.target.value)} className="w-[135px] rounded-lg border border-slate-300 px-2 py-1 disabled:bg-slate-50 disabled:text-slate-500" />
-                        <input disabled={isManagedView} type="time" value={splitAttemptValue(assignment.callAttempt2Date).time} onChange={(e) => handleAttemptChange(assignment, 'callAttempt2Date', 'time', e.target.value)} className="w-[95px] rounded-lg border border-slate-300 px-2 py-1 disabled:bg-slate-50 disabled:text-slate-500" />
-                      </div>
-                    </td>
-                    <td className="px-3 py-2">
-                      <select disabled={isManagedView} value={assignment.callingRemark || ''} onChange={(e) => handleFieldChange(assignment._id, 'callingRemark', e.target.value)} className={`w-[180px] rounded-lg border px-2 py-1 font-medium disabled:bg-slate-50 disabled:text-slate-500 ${getRemarkValueClasses('callingRemark', assignment.callingRemark)}`}>
-                        <option value="">Select</option>
-                        {remarks.callingRemarks.map((remark) => <option key={remark} value={remark}>{remark}</option>)}
-                      </select>
-                    </td>
-                    <td className="px-3 py-2">
-                      <select disabled={isManagedView} value={assignment.interestedRemark || ''} onChange={(e) => handleFieldChange(assignment._id, 'interestedRemark', e.target.value)} className={`w-[180px] rounded-lg border px-2 py-1 font-medium disabled:bg-slate-50 disabled:text-slate-500 ${getRemarkValueClasses('interestedRemark', assignment.interestedRemark)}`}>
-                        <option value="">Select</option>
-                        {remarks.interestedRemarks.map((remark) => <option key={remark} value={remark}>{remark}</option>)}
-                      </select>
-                    </td>
-                    <td className="px-3 py-2">
-                      <select disabled={isManagedView} value={assignment.notInterestedRemark || ''} onChange={(e) => handleFieldChange(assignment._id, 'notInterestedRemark', e.target.value)} className={`w-[200px] rounded-lg border px-2 py-1 font-medium disabled:bg-slate-50 disabled:text-slate-500 ${getRemarkValueClasses('notInterestedRemark', assignment.notInterestedRemark)}`}>
-                        <option value="">Select</option>
-                        {remarks.notInterestedRemarks.map((remark) => <option key={remark} value={remark}>{remark}</option>)}
-                      </select>
-                    </td>
-                    <td className="px-3 py-2">
-                      <input disabled={isManagedView} type="text" value={assignment.agentNotes || ''} onChange={(e) => handleFieldChange(assignment._id, 'agentNotes', e.target.value)} className="w-[220px] rounded-lg border border-slate-300 px-2 py-1 disabled:bg-slate-50 disabled:text-slate-500" />
-                    </td>
-                    <td className="px-3 py-2">
-                      <select disabled={isManagedView} value={assignment.status || ''} onChange={(e) => handleFieldChange(assignment._id, 'status', e.target.value)} className="w-[140px] rounded-lg border border-slate-300 px-2 py-1 disabled:bg-slate-50 disabled:text-slate-500">
-                        <option value="">Select</option>
-                        <option value="submitted">Submitted</option>
-                        <option value="activated">Activated</option>
-                      </select>
-                    </td>
-                    <td className="px-3 py-2">
-                      {isManagedView ? (
-                        <span className="rounded-xl bg-slate-100 px-3 py-2 text-xs font-medium text-slate-600">
-                          {assignment.inPipeline ? 'In Pipeline' : 'Not Added'}
-                        </span>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => openPipelineDraft(assignment)}
-                          className="rounded-xl border border-amber-200 px-3 py-2 text-xs font-medium text-amber-700 hover:bg-amber-50"
-                        >
-                          {assignment.inPipeline ? 'Added' : 'Add'}
-                        </button>
-                      )}
-                    </td>
-                    <td className="px-3 py-2 text-xs text-slate-500">
-                      {!isManagedView && saveState[assignment._id] === 'saving' && 'Saving...'}
-                      {!isManagedView && saveState[assignment._id] === 'saved' && 'Saved'}
-                      {!isManagedView && saveState[assignment._id] === 'error' && 'Error'}
-                      {isManagedView && 'Read only'}
-                    </td>
+                    {orderedDisplayColumnKeys.map((columnKey) => {
+                      const baseBg = isCopiedRow ? 'bg-amber-50' : isCalledRow ? 'bg-emerald-50' : 'bg-white';
+                      const cellClassName = getPinnedClasses(
+                        columnKey,
+                        'h-9 border-b border-r border-black px-2 py-1.5 text-black',
+                        baseBg,
+                        columnKey === 'contact' ? 'z-20' : 'z-10'
+                      );
+
+                      if (columnKey === 'contact') {
+                        return (
+                          <td key={`${assignment._id}-${columnKey}`} className={cellClassName} style={getColumnStyle(columnKey)}>
+                            <button
+                              type="button"
+                              onClick={() => handleCopyContact(assignment._id, lead.rawData?.[contactHeader] || lead.contactNumber)}
+                              className="flex items-center gap-2 rounded px-1 py-0.5 text-left text-black hover:bg-indigo-50"
+                            >
+                              <span
+                                className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full text-[11px] font-bold ${
+                                  isCalledRow ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-500'
+                                }`}
+                              >
+                                {isCalledRow ? '✓' : '•'}
+                              </span>
+                              {formatContactDisplay(lead.rawData?.[contactHeader] || lead.contactNumber)}
+                              {isCopiedRow ? <span className="text-xs font-semibold uppercase tracking-wide text-amber-700">Copied</span> : null}
+                            </button>
+                          </td>
+                        );
+                      }
+
+                      if (columnKey === 'product') {
+                        return <td key={`${assignment._id}-${columnKey}`} className={cellClassName} style={getColumnStyle(columnKey)}>{assignment.product?.toUpperCase() || '—'}</td>;
+                      }
+
+                      if (columnKey === 'batchName') {
+                        return (
+                          <td key={`${assignment._id}-${columnKey}`} className={cellClassName} style={getColumnStyle(columnKey)}>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span>{assignment.batchName}</span>
+                              {isSoftVisibleRow ? (
+                                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800">
+                                  Updated
+                                </span>
+                              ) : null}
+                            </div>
+                          </td>
+                        );
+                      }
+
+                      if (columnKey.startsWith('raw:')) {
+                        const header = columnKey.replace('raw:', '');
+                        return <td key={`${assignment._id}-${columnKey}`} className={cellClassName} style={getColumnStyle(columnKey)}>{lead.rawData?.[header] || '—'}</td>;
+                      }
+
+                      if (columnKey === 'contactabilityStatus') {
+                        return (
+                          <td key={`${assignment._id}-${columnKey}`} className={cellClassName} style={getColumnStyle(columnKey)}>
+                            <select disabled={isManagedView} value={assignment.contactabilityStatus || ''} onChange={(e) => handleFieldChange(assignment._id, 'contactabilityStatus', e.target.value)} className="w-full rounded-md border border-slate-300 px-2 py-0.5 text-[11px] disabled:bg-slate-50 disabled:text-slate-500">
+                              <option value="">Select</option>
+                              {(remarks.contactabilityStatuses || []).map((status) => <option key={status} value={status}>{status}</option>)}
+                            </select>
+                          </td>
+                        );
+                      }
+
+                      if (columnKey === 'callAttempt1Date' || columnKey === 'callAttempt2Date') {
+                        const field = columnKey;
+                        return (
+                          <td key={`${assignment._id}-${columnKey}`} className={cellClassName} style={getColumnStyle(columnKey)}>
+                            <div className="flex min-w-[220px] gap-2">
+                              <input disabled={isManagedView} type="date" value={splitAttemptValue(assignment[field]).date} onChange={(e) => handleAttemptChange(assignment, field, 'date', e.target.value)} className="w-[135px] rounded-md border border-slate-300 px-2 py-0.5 text-[11px] disabled:bg-slate-50 disabled:text-slate-500" />
+                              <input disabled={isManagedView} type="time" value={splitAttemptValue(assignment[field]).time} onChange={(e) => handleAttemptChange(assignment, field, 'time', e.target.value)} className="w-[95px] rounded-md border border-slate-300 px-2 py-0.5 text-[11px] disabled:bg-slate-50 disabled:text-slate-500" />
+                            </div>
+                          </td>
+                        );
+                      }
+
+                      if (columnKey === 'callingRemark' || columnKey === 'interestedRemark' || columnKey === 'notInterestedRemark') {
+                        const options =
+                          columnKey === 'callingRemark' ? remarks.callingRemarks :
+                          columnKey === 'interestedRemark' ? remarks.interestedRemarks :
+                          remarks.notInterestedRemarks;
+                        return (
+                          <td key={`${assignment._id}-${columnKey}`} className={cellClassName} style={getColumnStyle(columnKey)}>
+                            <select disabled={isManagedView} value={assignment[columnKey] || ''} onChange={(e) => handleFieldChange(assignment._id, columnKey, e.target.value)} className={`w-full rounded-md border px-2 py-0.5 text-[11px] font-medium disabled:bg-slate-50 disabled:text-slate-500 ${getRemarkValueClasses(columnKey, assignment[columnKey])}`}>
+                              <option value="">Select</option>
+                              {options.map((remark) => <option key={remark} value={remark}>{remark}</option>)}
+                            </select>
+                          </td>
+                        );
+                      }
+
+                      if (columnKey === 'agentNotes') {
+                        return <td key={`${assignment._id}-${columnKey}`} className={cellClassName} style={getColumnStyle(columnKey)}><input disabled={isManagedView} type="text" value={assignment.agentNotes || ''} onChange={(e) => handleFieldChange(assignment._id, 'agentNotes', e.target.value)} className="w-full rounded-md border border-slate-300 px-2 py-0.5 text-[11px] disabled:bg-slate-50 disabled:text-slate-500" /></td>;
+                      }
+
+                      if (columnKey === 'status') {
+                        return (
+                          <td key={`${assignment._id}-${columnKey}`} className={cellClassName} style={getColumnStyle(columnKey)}>
+                            <select disabled={isManagedView} value={assignment.status || ''} onChange={(e) => handleFieldChange(assignment._id, 'status', e.target.value)} className="w-full rounded-md border border-slate-300 px-2 py-0.5 text-[11px] disabled:bg-slate-50 disabled:text-slate-500">
+                              <option value="">Select</option>
+                              <option value="submitted">Submitted</option>
+                              <option value="activated">Activated</option>
+                            </select>
+                          </td>
+                        );
+                      }
+
+                      if (columnKey === 'pipeline') {
+                        return (
+                          <td key={`${assignment._id}-${columnKey}`} className={cellClassName} style={getColumnStyle(columnKey)}>
+                            {isManagedView ? (
+                              <span className="rounded-lg bg-slate-100 px-2.5 py-1 text-[11px] font-medium text-slate-600">
+                                {assignment.inPipeline ? 'In Pipeline' : 'Not Added'}
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => openPipelineDraft(assignment)}
+                                className="rounded-lg border border-amber-200 px-2.5 py-1 text-[11px] font-medium text-amber-700 hover:bg-amber-50"
+                              >
+                                {assignment.inPipeline ? 'Added' : 'Add'}
+                              </button>
+                            )}
+                          </td>
+                        );
+                      }
+
+                      if (columnKey === 'saveState') {
+                        return (
+                          <td key={`${assignment._id}-${columnKey}`} className={cellClassName} style={getColumnStyle(columnKey)}>
+                            {isSoftVisibleRow ? (
+                              <span className="mr-2 inline-flex rounded-full bg-amber-100 px-2 py-0.5 font-semibold uppercase tracking-wide text-amber-800">
+                                Stays until refresh
+                              </span>
+                            ) : null}
+                            {!isManagedView && saveState[assignment._id] === 'saving' && 'Saving...'}
+                            {!isManagedView && saveState[assignment._id] === 'saved' && 'Saved'}
+                            {!isManagedView && saveState[assignment._id] === 'error' && 'Error'}
+                            {isManagedView && 'Read only'}
+                          </td>
+                        );
+                      }
+
+                      return <td key={`${assignment._id}-${columnKey}`} className={cellClassName} style={getColumnStyle(columnKey)}>-</td>;
+                    })}
                   </tr>
                 );
               })}
             </tbody>
           </table>
+        </div>
+        <div className="border-t border-slate-200 bg-white px-4 py-1">
+          <div ref={bottomScrollbarRef} className="overflow-x-scroll overflow-y-hidden">
+            <div style={{ width: `${tableScrollWidth}px`, height: '12px' }} />
+          </div>
         </div>
       </section>
     </div>

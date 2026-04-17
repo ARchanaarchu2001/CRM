@@ -148,6 +148,11 @@ export const assignLeads = async (payload) => {
   return response.data;
 };
 
+export const unassignLeadAssignments = async (payload) => {
+  const response = await axiosPrivate.post('/leads/unassign', payload);
+  return response.data;
+};
+
 // Fetch my assignments
 export const fetchMyAssignments = async (params) => {
   const response = await axiosPrivate.get('/leads/assignments/mine', { params });

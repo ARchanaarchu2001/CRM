@@ -1,14 +1,13 @@
 import multer from 'multer';
-import path from 'path';
 import XLSX from 'xlsx';
 import asyncHandler from '../utils/asyncHandler.js';
 import Lead from '../models/Lead.js';
 import LeadAssignment from '../models/LeadAssignment.js';
 import LeadImport from '../models/LeadImport.js';
-import SavedReport from '../models/SavedReport.js';
 import ProductRemarkConfig from '../models/ProductRemarkConfig.js';
-import User from '../models/User.js';
+import SavedReport from '../models/SavedReport.js';
 import Team from '../models/Team.js';
+import User from '../models/User.js';
 import { ROLES } from '../constants/roles.js';
 import { checkLeadWorkedActivity, checkIsLeadCleared, getCurrentDateString, calculateSingleAgentMetrics } from '../utils/leadMetrics.js';
 import { getIO } from '../utils/socket.js';
@@ -90,6 +89,27 @@ const leadMatchesSearch = (lead, query) => {
     lead.batchName,
     lead.product,
     ...Object.values(lead.rawData || {}),
+  ];
+
+  return valuesToSearch.some((value) => String(value || '').toLowerCase().includes(safeSearch));
+};
+
+const assignmentMatchesSearch = (assignment, query) => {
+  const safeSearch = String(query || '').trim().toLowerCase();
+  if (!safeSearch) {
+    return true;
+  }
+
+  const valuesToSearch = [
+    assignment.assignedAgentName,
+    assignment.status,
+    assignment.contactabilityStatus,
+    assignment.callAttempt1Date,
+    assignment.callAttempt2Date,
+    assignment.callingRemark,
+    assignment.interestedRemark,
+    assignment.notInterestedRemark,
+    assignment.agentNotes,
   ];
 
   return valuesToSearch.some((value) => String(value || '').toLowerCase().includes(safeSearch));
@@ -212,6 +232,94 @@ const buildPipelineHistoryValue = ({ inPipeline, pipelineFollowUpDate }) => {
   }
 
   return pipelineFollowUpDate ? `In Pipeline - Follow-up ${pipelineFollowUpDate}` : 'In Pipeline';
+};
+
+const matchesScopeTeam = (agent, teamId) => {
+  if (!teamId || teamId === 'all') {
+    return true;
+  }
+
+  if (String(agent.team?._id || '') === String(teamId)) {
+    return true;
+  }
+
+  if (String(teamId).startsWith('team:')) {
+    const label = String(teamId).slice(5);
+    return String(agent.assignedTeam || agent.team?.name || 'Unassigned Team') === label;
+  }
+
+  return false;
+};
+
+const getAdvancedReportScope = async ({ query }) => {
+  const rangeInfo = resolveDateRange(query);
+  const { teamId = 'all', agentId = 'all', importBatchId = '', product = '' } = query;
+
+  const allAgents = await User.find({
+    role: ROLES.AGENT,
+    isDeleted: false,
+  })
+    .select('fullName email profilePhoto assignedTeam team teamLead isActive')
+    .populate(ANALYTICS_TEAM_POPULATE)
+    .sort({ fullName: 1 })
+    .lean();
+
+  const scopedAgents = allAgents
+    .filter((agent) => matchesScopeTeam(agent, teamId))
+    .filter((agent) => (agentId && agentId !== 'all' ? String(agent._id) === String(agentId) : true));
+
+  const scopedAgentIds = scopedAgents.map((agent) => agent._id);
+
+  if (!scopedAgentIds.length) {
+    return {
+      rangeInfo,
+      agents: [],
+      assignments: [],
+      filter: {
+        range: rangeInfo.range,
+        from: rangeInfo.from,
+        to: rangeInfo.to,
+        displayLabel: rangeInfo.displayLabel,
+        teamId,
+        agentId,
+        importBatchId,
+        product,
+      },
+    };
+  }
+
+  const assignmentFilters = { agent: { $in: scopedAgentIds } };
+  if (importBatchId) {
+    assignmentFilters.importBatch = importBatchId;
+  }
+  if (product) {
+    assignmentFilters.product = String(product).toLowerCase();
+  }
+
+  const assignments = await LeadAssignment.find(assignmentFilters)
+    .select(
+      'agent lead product status createdAt updatedAt submittedAt activatedAt workedDates inPipeline pipelineFollowUpDate contactabilityStatus callingRemark interestedRemark notInterestedRemark agentNotes assignedAgentName'
+    )
+    .populate('agent', 'fullName assignedTeam profilePhoto')
+    .populate('lead')
+    .sort({ updatedAt: -1, createdAt: -1 })
+    .lean();
+
+  return {
+    rangeInfo,
+    agents: scopedAgents,
+    assignments,
+    filter: {
+      range: rangeInfo.range,
+      from: rangeInfo.from,
+      to: rangeInfo.to,
+      displayLabel: rangeInfo.displayLabel,
+      teamId,
+      agentId,
+      importBatchId,
+      product,
+    },
+  };
 };
 
 const getViewableAgentForLead = async (requester, agentId) => {
@@ -369,14 +477,14 @@ export const getLeadMetadata = asyncHandler(async (req, res) => {
       isActive: true,
       isBlocked: false,
     })
-      .select('fullName email role team assignedTeam')
+      .select('fullName email role assignedTeam team')
       .populate('team', 'name')
       .sort({ fullName: 1 }),
     LeadImport.find()
       .sort({ createdAt: -1 })
       .limit(10)
       .populate('uploadedBy', 'fullName email'),
-    Team.find().select('name lead').sort({ name: 1 }),
+    Team.find().select('name lead').sort({ name: 1 }).lean(),
   ]);
 
   res.status(200).json({
@@ -636,17 +744,9 @@ export const getAnalystLeads = asyncHandler(async (req, res) => {
     .populate('importBatch', 'sourceFileName')
     .lean();
 
-  const filteredLeads = search ? leads.filter((lead) => leadMatchesSearch(lead, search)) : leads;
-
-  const totalCount = filteredLeads.length;
-  const totalPages = Math.max(Math.ceil(totalCount / pageSize), 1);
-  const safePage = Math.min(page, totalPages);
-  const startIndex = (safePage - 1) * pageSize;
-  const paginatedLeads = filteredLeads.slice(startIndex, startIndex + pageSize);
-
-  const leadIds = paginatedLeads.map((lead) => lead._id);
-  const assignments = leadIds.length
-    ? await LeadAssignment.find({ lead: { $in: leadIds } })
+  const allLeadIds = leads.map((lead) => lead._id);
+  const allAssignments = allLeadIds.length
+    ? await LeadAssignment.find({ lead: { $in: allLeadIds } })
       .select(
         'lead assignedAgentName status contactabilityStatus callAttempt1Date callAttempt2Date callingRemark interestedRemark notInterestedRemark agentNotes updatedAt'
       )
@@ -654,7 +754,7 @@ export const getAnalystLeads = asyncHandler(async (req, res) => {
       .lean()
     : [];
 
-  const assignmentsByLeadId = assignments.reduce((accumulator, assignment) => {
+  const assignmentsByLeadId = allAssignments.reduce((accumulator, assignment) => {
     const key = String(assignment.lead);
     if (!accumulator[key]) {
       accumulator[key] = [];
@@ -662,6 +762,23 @@ export const getAnalystLeads = asyncHandler(async (req, res) => {
     accumulator[key].push(assignment);
     return accumulator;
   }, {});
+
+  const filteredLeads = search
+    ? leads.filter((lead) => {
+        if (leadMatchesSearch(lead, search)) {
+          return true;
+        }
+
+        const leadAssignments = assignmentsByLeadId[String(lead._id)] || [];
+        return leadAssignments.some((assignment) => assignmentMatchesSearch(assignment, search));
+      })
+    : leads;
+
+  const totalCount = filteredLeads.length;
+  const totalPages = Math.max(Math.ceil(totalCount / pageSize), 1);
+  const safePage = Math.min(page, totalPages);
+  const startIndex = (safePage - 1) * pageSize;
+  const paginatedLeads = filteredLeads.slice(startIndex, startIndex + pageSize);
 
   res.status(200).json({
     totalCount,
@@ -778,6 +895,127 @@ export const getAnalystBatches = asyncHandler(async (req, res) => {
   });
 });
 
+export const exportAnalystLeads = asyncHandler(async (req, res) => {
+  const { product, duplicateStatus, search, assignmentStatus, batchName, importBatchId } = req.query;
+
+  const filters = buildAnalystLeadFilters({
+    product,
+    duplicateStatus,
+    assignmentStatus,
+    batchName,
+    importBatchId,
+  });
+
+  const leads = await Lead.find(filters).sort({ createdAt: -1 }).lean();
+  const filteredLeads = search ? leads.filter((lead) => leadMatchesSearch(lead, search)) : leads;
+
+  const importMeta = importBatchId
+    ? await LeadImport.findById(importBatchId).select('headers contactColumn batchName').lean()
+    : null;
+
+  const detectedContactHeader =
+    importMeta?.contactColumn ||
+    filteredLeads[0]?.contactColumn ||
+    'Contact';
+
+  const rawHeaders = Array.from(
+    new Set(
+      filteredLeads.flatMap((lead) =>
+        Object.keys(lead.rawData || {}).filter((header) => header !== detectedContactHeader)
+      )
+    )
+  );
+
+  const orderedRawHeaders = [
+    ...(importMeta?.headers || []).filter((header) => header && header !== detectedContactHeader),
+    ...rawHeaders.filter((header) => !(importMeta?.headers || []).includes(header)),
+  ];
+
+  const safeBatchName = importMeta?.batchName || filteredLeads[0]?.batchName || 'dataset';
+  const scopeLabel = assignmentStatus || 'full';
+  const filename = `${safeBatchName}-${scopeLabel}.csv`;
+
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+
+  if (assignmentStatus === 'assigned') {
+    const leadIds = filteredLeads.map((lead) => lead._id);
+    const assignments = await LeadAssignment.find({ lead: { $in: leadIds } })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const leadMap = new Map(filteredLeads.map((lead) => [String(lead._id), lead]));
+    const productSet = [...new Set(filteredLeads.map((lead) => String(lead.product || 'general').toLowerCase()))];
+    const remarkConfigs = productSet.length
+      ? await ProductRemarkConfig.find({ product: { $in: productSet } }).lean()
+      : [];
+
+    const labelOrder = [];
+    const labelToField = {};
+    const addLabel = (label, field) => {
+      const safeLabel = String(label || '').trim();
+      if (!safeLabel || labelToField[safeLabel]) return;
+      labelToField[safeLabel] = field;
+      labelOrder.push(safeLabel);
+    };
+
+    for (const config of remarkConfigs) {
+      addLabel(config.callAttempt1Label || '', 'callAttempt1Date');
+      addLabel(config.callAttempt2Label || '', 'callAttempt2Date');
+      addLabel(config.callingRemarkLabel || '', 'callingRemark');
+      addLabel(config.interestedRemarkLabel || '', 'interestedRemark');
+      addLabel(config.notInterestedRemarkLabel || '', 'notInterestedRemark');
+    }
+
+    const headers = [
+      detectedContactHeader,
+      ...orderedRawHeaders,
+      'AssignedAgent',
+      'Status',
+      'ContactabilityStatus',
+      ...labelOrder,
+      'AgentNotes',
+    ];
+
+    res.write(headers.map(escapeCsvValue).join(',') + '\n');
+
+    for (const assignment of assignments) {
+      const lead = leadMap.get(String(assignment.lead)) || {};
+      const rawData = lead.rawData || {};
+      const contactValue = rawData[detectedContactHeader] || lead.contactNumber || '';
+
+      const row = [
+        contactValue,
+        ...orderedRawHeaders.map((header) => rawData[header] || ''),
+        assignment.assignedAgentName || '',
+        assignment.status || '',
+        assignment.contactabilityStatus || '',
+        ...labelOrder.map((label) => assignment[labelToField[label]] || ''),
+        assignment.agentNotes || '',
+      ];
+
+      res.write(row.map(escapeCsvValue).join(',') + '\n');
+    }
+
+    res.end();
+    return;
+  }
+
+  const headers = [detectedContactHeader, ...orderedRawHeaders];
+  res.write(headers.map(escapeCsvValue).join(',') + '\n');
+
+  for (const lead of filteredLeads) {
+    const rawData = lead.rawData || {};
+    const row = [
+      rawData[detectedContactHeader] || lead.contactNumber || '',
+      ...orderedRawHeaders.map((header) => rawData[header] || ''),
+    ];
+    res.write(row.map(escapeCsvValue).join(',') + '\n');
+  }
+
+  res.end();
+});
+
 export const assignLeadsToAgent = asyncHandler(async (req, res) => {
   const { leadIds, agentId } = req.body;
 
@@ -842,6 +1080,59 @@ export const assignLeadsToAgent = asyncHandler(async (req, res) => {
 
   res.status(201).json({
     message: `Assigned ${leadIds.length} leads to ${agent.fullName}`,
+  });
+});
+
+export const unassignLeadAssignments = asyncHandler(async (req, res) => {
+  const { assignmentIds } = req.body;
+
+  if (!Array.isArray(assignmentIds) || !assignmentIds.length) {
+    res.status(400);
+    throw new Error('Please choose at least one assigned row to unassign');
+  }
+
+  const assignments = await LeadAssignment.find({
+    _id: { $in: assignmentIds },
+  }).select('lead agent importBatch batchName product');
+
+  if (!assignments.length) {
+    res.status(404);
+    throw new Error('Selected assignments could not be found');
+  }
+
+  const assignmentObjectIds = assignments.map((assignment) => assignment._id);
+  const leadAssignmentCounts = assignments.reduce((counts, assignment) => {
+    const leadId = assignment.lead.toString();
+    counts[leadId] = (counts[leadId] || 0) + 1;
+    return counts;
+  }, {});
+
+  await LeadAssignment.deleteMany({ _id: { $in: assignmentObjectIds } });
+
+  await Promise.all(
+    Object.entries(leadAssignmentCounts).map(async ([leadId, count]) => {
+      await Lead.updateOne({ _id: leadId }, { $inc: { assignedAgentCount: -count } });
+      await Lead.updateOne({ _id: leadId, assignedAgentCount: { $lt: 0 } }, { $set: { assignedAgentCount: 0 } });
+    })
+  );
+
+  const agents = [...new Set(assignments.map((assignment) => assignment.agent.toString()))];
+  try {
+    getIO().emit('assignmentRemoved', {
+      agentIds: agents,
+      assignmentIds: assignmentObjectIds.map((id) => id.toString()),
+      removedBy: req.user._id.toString(),
+      removedCount: assignments.length,
+      message: `${assignments.length} assigned lead${assignments.length === 1 ? '' : 's'} were unassigned.`,
+      removedAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error('Failed to emit assignmentRemoved', error);
+  }
+
+  res.status(200).json({
+    message: `Unassigned ${assignments.length} assigned lead${assignments.length === 1 ? '' : 's'}.`,
+    removedCount: assignments.length,
   });
 });
 
@@ -2032,78 +2323,34 @@ export const getAdvancedReportData = asyncHandler(async (req, res) => {
     throw new Error('Forbidden');
   }
 
-  const { teamId, agentId, importBatchId, product } = req.query;
-
-  let rangeInfo;
-  try {
-    rangeInfo = resolveDateRange(req.query);
-  } catch (error) {
-    res.status(400);
-    throw error;
-  }
-
-  // 1. Resolve Agents to include
-  const agentQuery = { role: ROLES.AGENT, isDeleted: false };
-  if (agentId && agentId !== 'all') {
-    agentQuery._id = agentId;
-  } else if (teamId && teamId !== 'all') {
-    // Handle both real team IDs and the fallback "team:Name" label
-    if (String(teamId).startsWith('team:')) {
-      const teamName = teamId.replace('team:', '');
-      agentQuery.$or = [{ assignedTeam: teamName }, { 'team.name': teamName }];
-    } else {
-      agentQuery.team = teamId;
-    }
-  }
-
-  const agents = await User.find(agentQuery)
-    .select('fullName email profilePhoto assignedTeam team teamLead isActive')
-    .populate(ANALYTICS_TEAM_POPULATE)
-    .sort({ fullName: 1 })
-    .lean();
-
-  const activeAgentIds = agents.map((agent) => agent._id);
-
-  if (!activeAgentIds.length) {
-    return res.status(200).json({
-      success: true,
-      report: {
-        filter: rangeInfo,
-        kpis: [],
-        charts: { trend: [], productPerformance: [], agentDials: [], agentSubmissions: [], teamComparison: [] },
-        agentTable: [],
-      },
-    });
-  }
-
-  // 2. Resolve Assignments filters
-  const assignmentQuery = { agent: { $in: activeAgentIds } };
-  if (importBatchId) assignmentQuery.importBatch = importBatchId;
-  if (product) assignmentQuery.product = String(product).toLowerCase();
-
-  const assignments = await LeadAssignment.find(assignmentQuery)
-    .select('agent product status createdAt submittedAt activatedAt workedDates inPipeline pipelineFollowUpDate updatedAt contactabilityStatus callingRemark interestedRemark notInterestedRemark agentNotes')
-    .lean();
-
-  const detailedLogs = await LeadAssignment.find(assignmentQuery)
-    .populate('lead')
-    .populate('agent', 'fullName team assignedTeam')
-    .sort({ createdAt: -1 })
-    .limit(50)
-    .lean();
-
-  // 3. Build Analytics
+  const scope = await getAdvancedReportScope({ query: req.query });
   const analytics = buildDashboardAnalytics({
-    agents,
-    assignments,
-    rangeInfo,
+    agents: scope.agents,
+    assignments: scope.assignments,
+    rangeInfo: scope.rangeInfo,
     includeTeamComparison: true,
   });
+
+  const detailedLogs = scope.assignments
+    .filter((assignment) => {
+      const hasInteraction =
+        assignment.contactabilityStatus ||
+        assignment.callingRemark ||
+        assignment.interestedRemark ||
+        assignment.notInterestedRemark ||
+        assignment.agentNotes ||
+        assignment.callAttempt1Date ||
+        assignment.callAttempt2Date ||
+        assignment.status;
+      return Boolean(hasInteraction);
+    })
+    .slice(0, 50);
 
   res.status(200).json({
     success: true,
     report: {
       ...analytics,
+      filter: scope.filter,
       detailedLogs,
     },
   });
@@ -2115,152 +2362,62 @@ export const exportAdvancedReportDetail = asyncHandler(async (req, res) => {
     throw new Error('Forbidden');
   }
 
-  const { teamId, agentId, importBatchId, product } = req.query;
-
-  let rangeInfo;
-  try {
-    rangeInfo = resolveDateRange(req.query);
-  } catch (error) {
-    res.status(400);
-    throw error;
-  }
-
-  // 1. Resolve Agents
-  const agentQuery = { role: ROLES.AGENT, isDeleted: false };
-  if (agentId && agentId !== 'all') {
-    agentQuery._id = agentId;
-  } else if (teamId && teamId !== 'all') {
-    if (String(teamId).startsWith('team:')) {
-      const teamName = teamId.replace('team:', '');
-      agentQuery.$or = [{ assignedTeam: teamName }, { 'team.name': teamName }];
-    } else {
-      agentQuery.team = teamId;
-    }
-  }
-
-  const agents = await User.find(agentQuery)
-    .select('fullName email profilePhoto assignedTeam team isActive')
-    .populate(ANALYTICS_TEAM_POPULATE)
-    .lean();
-    
-  const agentIds = agents.map(a => a._id);
-  const agentMap = new Map(agents.map(a => [String(a._id), a]));
-
-  if (!agentIds.length) {
-    res.status(400);
-    throw new Error('No agents found for the selected scope.');
-  }
-
-  // 2. Fetch Assignments for Analytics
-  const assignmentQuery = { 
-    agent: { $in: agentIds },
-    createdAt: { $gte: rangeInfo.fromDate, $lte: rangeInfo.toDate } 
-  };
-  if (importBatchId) assignmentQuery.importBatch = importBatchId;
-  if (product) assignmentQuery.product = String(product).toLowerCase();
-
-  const assignments = await LeadAssignment.find(assignmentQuery)
-    .populate('lead')
-    .sort({ createdAt: -1 })
-    .lean();
-
-  // 3. Build Analytics for Summary Sheets
+  const scope = await getAdvancedReportScope({ query: req.query });
   const analytics = buildDashboardAnalytics({
-    agents,
-    assignments,
-    rangeInfo,
+    agents: scope.agents,
+    assignments: scope.assignments,
+    rangeInfo: scope.rangeInfo,
     includeTeamComparison: true,
   });
 
-  // 4. Create Workbook
-  const wb = XLSX.utils.book_new();
-
-  // --- SHEET 1: PERFORMANCE SUMMARY ---
-  const summaryData = analytics.kpis.map(k => ({
-    'Metric': k.label,
-    'Value': k.value,
-    'Context': k.subLabel || ''
+  const summaryRows = analytics.kpis.map((kpi) => ({
+    Metric: kpi.title,
+    Value: kpi.value,
   }));
-  const wsSummary = XLSX.utils.json_to_sheet(summaryData);
-  XLSX.utils.book_append_sheet(wb, wsSummary, 'Performance Summary');
 
-  // --- SHEET 2: AGENT LEADERBOARD ---
-  const leaderboardData = analytics.charts.agentSubmissions
-    .sort((a, b) => b.submissions - a.submissions)
-    .map((item, index) => {
-        const agent = agents.find(ag => ag.fullName === item.agent);
-        return {
-          'Rank': index + 1,
-          'Agent Name': item.agent,
-          'Team': agent?.team?.name || agent?.assignedTeam || 'Unassigned',
-          'Total Dials': item.dials || 0,
-          'Submissions': item.submissions || 0,
-          'Efficiency (%)': item.efficiency ? `${item.efficiency}%` : '0%',
-          'Conversion Rate (%)': item.dials > 0 ? `${((item.submissions / item.dials) * 100).toFixed(1)}%` : '0%'
-        };
-    });
-  const wsLeaderboard = XLSX.utils.json_to_sheet(leaderboardData);
-  XLSX.utils.book_append_sheet(wb, wsLeaderboard, 'Agent Rankings');
-
-  // --- SHEET 3: TREND ANALYSIS DATA ---
-  const trendData = analytics.charts.trend.map(t => ({
-    'Period': t.name,
-    'Dials': t.dials,
-    'Submissions': t.submissions,
-    'Activations': t.activations || 0
+  const trendRows = (analytics.charts?.trend || []).map((row) => ({
+    Date: row.label,
+    Dials: row.dials,
+    Submissions: row.submissions,
+    Activations: row.activations,
   }));
-  const wsTrend = XLSX.utils.json_to_sheet(trendData);
-  XLSX.utils.book_append_sheet(wb, wsTrend, 'Trend Analysis');
 
-  // --- SHEET 4: DETAILED INTERACTION LOGS ---
-  const logData = assignments.map((assignment) => {
-    const agent = agentMap.get(String(assignment.agent));
-    const lead = assignment.lead || {};
-    const rawData = lead.rawData || {};
+  const agentRows = (analytics.agentTable || []).map((row) => ({
+    Agent: row.agentName,
+    Team: row.teamName,
+    Dials: row.dials,
+    Submissions: row.submissions,
+    Activations: row.activations,
+    Pipeline: row.pipelineCount,
+    OverduePipeline: row.overduePipelineCount,
+    PendingLeads: row.pendingLeads,
+    TotalAssignedLeads: row.totalAssignedLeads,
+  }));
 
-    const companyName = rawData.Company || rawData.company || rawData['Company Name'] || rawData['COMPANY'] || '';
-    const customerName = rawData.Name || rawData.name || rawData['Customer Name'] || '';
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(summaryRows), 'Summary');
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(trendRows), 'Trends');
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(agentRows), 'Agents');
 
-    return {
-      'Date': new Date(assignment.createdAt).toLocaleDateString(),
-      'Agent': agent?.fullName || 'Unknown',
-      'Team': agent?.team?.name || agent?.assignedTeam || 'Unassigned',
-      'Product': assignment.product?.toUpperCase() || '',
-      'Status': (assignment.status || 'NEW').toUpperCase(),
-      'Label/Name': customerName || (assignment.pipelineDisplayName || ''),
-      'Mobile Number': lead.contactNumber || assignment.pipelineDisplayContact || '',
-      'Company': companyName || '',
-      'Contactability': assignment.contactabilityStatus || '',
-      'Calling Remark': assignment.callingRemark || '',
-      'Interested Remark': assignment.interestedRemark || '',
-      'Not Interested Remark': assignment.notInterestedRemark || '',
-      'Agent Notes': assignment.agentNotes || '',
-      'Batch': assignment.batchName || '',
-    };
-  });
-  const wsLogs = XLSX.utils.json_to_sheet(logData);
-  
-  // Set column widths for Logs
-  wsLogs['!cols'] = [
-    { wch: 15 }, { wch: 20 }, { wch: 20 }, { wch: 15 }, { wch: 15 }, 
-    { wch: 25 }, { wch: 15 }, { wch: 25 }, { wch: 20 }, { wch: 20 }, 
-    { wch: 30 }, { wch: 30 }, { wch: 40 }, { wch: 20 }
-  ];
-  XLSX.utils.book_append_sheet(wb, wsLogs, 'Detailed Interaction Logs');
-
-  // 5. Finalize and Send
-  const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
-  const fileName = `Analysis_${rangeInfo.range}_${new Date().getTime()}.xlsx`;
-
-  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-  res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
-  
-  return res.send(buf);
+  const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+  res.setHeader(
+    'Content-Disposition',
+    `attachment; filename="advanced-report-${Date.now()}.xlsx"`
+  );
+  res.setHeader(
+    'Content-Type',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  );
+  res.status(200).send(buffer);
 });
 
 export const saveReport = asyncHandler(async (req, res) => {
-  const { name, description, filters } = req.body;
+  if (![ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN].includes(req.user.role)) {
+    res.status(403);
+    throw new Error('Forbidden');
+  }
 
+  const name = String(req.body.name || '').trim();
   if (!name) {
     res.status(400);
     throw new Error('Report name is required');
@@ -2268,8 +2425,16 @@ export const saveReport = asyncHandler(async (req, res) => {
 
   const savedReport = await SavedReport.create({
     name,
-    description,
-    filters,
+    description: String(req.body.description || '').trim(),
+    filters: {
+      range: String(req.body.filters?.range || 'today'),
+      from: String(req.body.filters?.from || ''),
+      to: String(req.body.filters?.to || ''),
+      teamId: String(req.body.filters?.teamId || 'all'),
+      agentId: String(req.body.filters?.agentId || 'all'),
+      importBatchId: String(req.body.filters?.importBatchId || ''),
+      product: String(req.body.filters?.product || ''),
+    },
     createdBy: req.user._id,
   });
 
@@ -2280,6 +2445,11 @@ export const saveReport = asyncHandler(async (req, res) => {
 });
 
 export const getSavedReports = asyncHandler(async (req, res) => {
+  if (![ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN].includes(req.user.role)) {
+    res.status(403);
+    throw new Error('Forbidden');
+  }
+
   const reports = await SavedReport.find({ createdBy: req.user._id })
     .sort({ createdAt: -1 })
     .lean();
@@ -2291,17 +2461,23 @@ export const getSavedReports = asyncHandler(async (req, res) => {
 });
 
 export const deleteSavedReport = asyncHandler(async (req, res) => {
-  const report = await SavedReport.findOne({ _id: req.params.id, createdBy: req.user._id });
+  if (![ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN].includes(req.user.role)) {
+    res.status(403);
+    throw new Error('Forbidden');
+  }
+
+  const report = await SavedReport.findOneAndDelete({
+    _id: req.params.id,
+    createdBy: req.user._id,
+  });
 
   if (!report) {
     res.status(404);
-    throw new Error('Report not found');
+    throw new Error('Saved report not found');
   }
-
-  await report.deleteOne();
 
   res.status(200).json({
     success: true,
-    message: 'Report deleted successfully',
+    message: 'Saved report deleted',
   });
 });

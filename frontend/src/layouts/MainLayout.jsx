@@ -153,8 +153,11 @@ const firstName = getDisplayName();
 
   const isWideTablePage =
     /\/agent-dash\/[^/]+$/.test(location.pathname) ||
+    /\/agent-queue\/[^/]+$/.test(location.pathname) ||
+    /\/analyst-dash\/[^/]+$/.test(location.pathname) ||
     /\/team-lead\/agents\/[^/]+\/batches\/[^/]+$/.test(location.pathname) ||
-    /\/analyst\/agents\/[^/]+\/batches\/[^/]+$/.test(location.pathname);
+    /\/analyst\/agents\/[^/]+\/batches\/[^/]+$/.test(location.pathname) ||
+    /\/team-lead\/agents\/[^/]+\/queue\/[^/]+$/.test(location.pathname);
 
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col">
@@ -210,7 +213,7 @@ const firstName = getDisplayName();
         </div>
       </header>
 
-      <main className={`flex-1 w-full p-4 sm:p-6 lg:p-8 ${isWideTablePage ? 'max-w-none' : 'mx-auto max-w-7xl'}`}>
+      <main className={`flex-1 w-full p-4 sm:p-5 lg:p-6 ${isWideTablePage ? 'max-w-none' : 'mx-auto max-w-7xl'}`}>
         <div key={location.pathname} className="min-h-full">
           <Outlet />
         </div>
