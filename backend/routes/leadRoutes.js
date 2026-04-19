@@ -2,9 +2,13 @@ import express from 'express';
 import {
   assignLeadsToAgent,
   deleteAnalystBatch,
+  deleteSavedReport,
+  exportAdvancedReportDetail,
   getAnalystBatches,
   getAnalystLeadSelection,
   getAnalystPerformanceOverview,
+  getAdvancedReportData,
+  getSavedReports,
   getManagedAgentBatchView,
   getManagedAgentDashboardView,
   getManagedAgentPipelineView,
@@ -24,6 +28,7 @@ import {
   updateAssignmentOutcome,
   unassignLeadAssignments,
   upsertRemarkConfig,
+  saveReport,
 } from '../controllers/leadController.js';
 import { protect, authorizeRoles } from '../middleware/authMiddleware.js';
 import { ROLES } from '../constants/roles.js';
@@ -35,8 +40,11 @@ router.use(protect);
 router.get('/metadata', authorizeRoles(ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN), getLeadMetadata);
 router.get('/analyst/batches', authorizeRoles(ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN), getAnalystBatches);
 router.get('/analyst/overview', authorizeRoles(ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN), getAnalystPerformanceOverview);
+router.get('/analyst/reports', authorizeRoles(ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN), getAdvancedReportData);
+router.get('/analyst/reports/export', authorizeRoles(ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN), exportAdvancedReportDetail);
 router.get('/analyst/selection', authorizeRoles(ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN), getAnalystLeadSelection);
 router.get('/analyst', authorizeRoles(ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN), getAnalystLeads);
+router.get('/reports/saved', authorizeRoles(ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN), getSavedReports);
 router.get(
   '/team-view/agents/:agentId/dashboard',
   authorizeRoles(ROLES.TEAM_LEAD, ROLES.SUPER_ADMIN, ROLES.DATA_ANALYST),
@@ -84,10 +92,20 @@ router.post(
   authorizeRoles(ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN),
   unassignLeadAssignments
 );
+router.post(
+  '/reports/saved',
+  authorizeRoles(ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN),
+  saveReport
+);
 router.delete(
   '/analyst/batches/:importBatchId',
   authorizeRoles(ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN),
   deleteAnalystBatch
+);
+router.delete(
+  '/reports/saved/:id',
+  authorizeRoles(ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN),
+  deleteSavedReport
 );
 router.put(
   '/remarks/:product',

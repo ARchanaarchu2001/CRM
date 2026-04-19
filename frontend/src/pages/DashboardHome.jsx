@@ -18,7 +18,7 @@ const DashboardHome = () => {
   }
 
   if (role === 'manager') {
-    return <Navigate to="/manager-dash" replace />;
+    return <Navigate to="/admin-dash" replace />;
   }
 
   if (role === 'team_lead') {

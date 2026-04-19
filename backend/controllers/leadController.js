@@ -100,8 +100,10 @@ const assignmentMatchesSearch = (assignment, query) => {
     return true;
   }
 
+  const resolvedAssignedAgentName = assignment.assignedAgentName || assignment.agent?.fullName || '';
+
   const valuesToSearch = [
-    assignment.assignedAgentName,
+    resolvedAssignedAgentName,
     assignment.status,
     assignment.contactabilityStatus,
     assignment.callAttempt1Date,
@@ -114,6 +116,11 @@ const assignmentMatchesSearch = (assignment, query) => {
 
   return valuesToSearch.some((value) => String(value || '').toLowerCase().includes(safeSearch));
 };
+
+const normalizeAssignmentAgentName = (assignment) => ({
+  ...assignment,
+  assignedAgentName: assignment.assignedAgentName || assignment.agent?.fullName || '',
+});
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -740,7 +747,7 @@ export const getAnalystLeads = asyncHandler(async (req, res) => {
   });
 
   const leads = await Lead.find(filters)
-    .sort({ createdAt: -1 })
+    .sort({ createdAt: -1, _id: 1 })
     .populate('importBatch', 'sourceFileName')
     .lean();
 
@@ -748,10 +755,12 @@ export const getAnalystLeads = asyncHandler(async (req, res) => {
   const allAssignments = allLeadIds.length
     ? await LeadAssignment.find({ lead: { $in: allLeadIds } })
       .select(
-        'lead assignedAgentName status contactabilityStatus callAttempt1Date callAttempt2Date callingRemark interestedRemark notInterestedRemark agentNotes updatedAt'
+        'lead agent assignedAgentName status contactabilityStatus callAttempt1Date callAttempt2Date callingRemark interestedRemark notInterestedRemark agentNotes updatedAt'
       )
+      .populate('agent', 'fullName')
       .sort({ updatedAt: -1 })
       .lean()
+      .then((assignments) => assignments.map(normalizeAssignmentAgentName))
     : [];
 
   const assignmentsByLeadId = allAssignments.reduce((accumulator, assignment) => {
@@ -813,7 +822,7 @@ export const getAnalystLeadSelection = asyncHandler(async (req, res) => {
 
   if (!search) {
     const leads = await Lead.find(filters)
-      .sort({ createdAt: -1 })
+      .sort({ createdAt: -1, _id: 1 })
       .limit(count)
       .select('_id')
       .lean();
@@ -826,7 +835,7 @@ export const getAnalystLeadSelection = asyncHandler(async (req, res) => {
   }
 
   const leads = await Lead.find(filters)
-    .sort({ createdAt: -1 })
+    .sort({ createdAt: -1, _id: 1 })
     .select('_id contactNumber batchName product rawData')
     .lean();
 

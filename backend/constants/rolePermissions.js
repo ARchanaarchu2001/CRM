@@ -4,7 +4,7 @@ import { ROLES } from './roles.js';
  * Checks if the current user has permission to create an account with the target role.
  * 
  * Rules:
- * - Super Admin can create all users (roles)
+ * - Super Admin and Manager can create all users (roles)
  * - Team Lead can only create 'agent' role
  * - Team Lead cannot create manager, data_analyst, team_lead, or super_admin
  * - Other roles cannot create users
@@ -14,8 +14,8 @@ import { ROLES } from './roles.js';
  * @returns {boolean}
  */
 export const canCreateUser = (currentUserRole, targetRole) => {
-  if (currentUserRole === ROLES.SUPER_ADMIN) {
-    return true; // Super Admin can create any role
+  if ([ROLES.SUPER_ADMIN, ROLES.MANAGER].includes(currentUserRole)) {
+    return true; // Super Admin and Manager can create any role
   }
 
   if (currentUserRole === ROLES.DATA_ANALYST) {
@@ -33,7 +33,7 @@ export const canCreateUser = (currentUserRole, targetRole) => {
  * Checks if the current user has permission to delete or deactivate a specific user.
  * 
  * Rules:
- * - Super Admin can deactivate/remove any user as needed
+ * - Super Admin and Manager can deactivate/remove any user as needed
  * - Team Lead can delete/deactivate ONLY their own agents
  * - Team Lead cannot delete users outside their own team
  * - Other roles cannot delete any users
@@ -43,8 +43,8 @@ export const canCreateUser = (currentUserRole, targetRole) => {
  * @returns {boolean}
  */
 export const canModifyOrDeleteUser = (currentUser, targetUser) => {
-  // Super Admin has full authority
-  if (currentUser.role === ROLES.SUPER_ADMIN) {
+  // Super Admin and Manager have full authority
+  if ([ROLES.SUPER_ADMIN, ROLES.MANAGER].includes(currentUser.role)) {
     return true; 
   }
 
@@ -79,6 +79,10 @@ export const canModifyOrDeleteUser = (currentUser, targetUser) => {
 export const getSafeUserFetchScope = (currentUser) => {
   if (currentUser.role === ROLES.SUPER_ADMIN) {
     return { isDeleted: false }; // See all active/non-deleted users globally
+  }
+
+  if (currentUser.role === ROLES.MANAGER) {
+    return { isDeleted: false };
   }
 
   if (currentUser.role === ROLES.DATA_ANALYST) {

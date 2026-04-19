@@ -32,26 +32,26 @@ router.use(protect);
 // =========================================================
 router.post(
   '/create',
-  authorizeRoles(ROLES.SUPER_ADMIN, ROLES.DATA_ANALYST),
+  authorizeRoles(ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.DATA_ANALYST),
   uploadProfilePhoto.single('profilePhoto'),
   createUserByAdmin
 );
 
 router.get(
   '/',
-  authorizeRoles(ROLES.SUPER_ADMIN, ROLES.DATA_ANALYST),
+  authorizeRoles(ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.DATA_ANALYST),
   getAllUsersForAdmin
 );
 
 router.get(
   '/teams',
-  authorizeRoles(ROLES.SUPER_ADMIN, ROLES.DATA_ANALYST),
+  authorizeRoles(ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.DATA_ANALYST),
   getTeams
 );
 
 router.get(
   '/dashboard/super-admin',
-  authorizeRoles(ROLES.SUPER_ADMIN),
+  authorizeRoles(ROLES.SUPER_ADMIN, ROLES.MANAGER),
   getSuperAdminDashboard
 );
 
@@ -74,7 +74,7 @@ router.get(
 
 router.get(
   '/dashboard/team-lead',
-  authorizeRoles(ROLES.TEAM_LEAD),
+  authorizeRoles(ROLES.TEAM_LEAD, ROLES.MANAGER),
   getTeamLeadDashboard
 );
 
@@ -86,7 +86,7 @@ router.get(
 
 router.get(
   '/dashboard/agents/:agentId',
-  authorizeRoles(ROLES.SUPER_ADMIN, ROLES.TEAM_LEAD, ROLES.DATA_ANALYST),
+  authorizeRoles(ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.TEAM_LEAD, ROLES.DATA_ANALYST),
   getAgentPerformanceDetail
 );
 
@@ -96,44 +96,44 @@ router.get(
 // =========================================================
 router.get(
   '/:id',
-  authorizeRoles(ROLES.SUPER_ADMIN, ROLES.TEAM_LEAD, ROLES.DATA_ANALYST),
+  authorizeRoles(ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.TEAM_LEAD, ROLES.DATA_ANALYST),
   getUserById
 );
 
 router.put(
   '/:id',
-  authorizeRoles(ROLES.SUPER_ADMIN, ROLES.TEAM_LEAD, ROLES.AGENT, ROLES.DATA_ANALYST),
+  authorizeRoles(ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.TEAM_LEAD, ROLES.AGENT, ROLES.DATA_ANALYST),
   uploadProfilePhoto.single('profilePhoto'), // Keep to allow updating photo
   updateUser
 );
 
 router.patch(
   '/:id/deactivate',
-  authorizeRoles(ROLES.SUPER_ADMIN, ROLES.TEAM_LEAD, ROLES.DATA_ANALYST),
+  authorizeRoles(ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.TEAM_LEAD, ROLES.DATA_ANALYST),
   deactivateUser
 );
 
 router.patch(
   '/:id/reactivate',
-  authorizeRoles(ROLES.SUPER_ADMIN, ROLES.TEAM_LEAD, ROLES.DATA_ANALYST),
+  authorizeRoles(ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.TEAM_LEAD, ROLES.DATA_ANALYST),
   reactivateUser
 );
 
 router.patch(
   '/:id/move-team',
-  authorizeRoles(ROLES.SUPER_ADMIN, ROLES.DATA_ANALYST),
+  authorizeRoles(ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.DATA_ANALYST),
   moveAgentToTeam
 );
 
 router.patch(
   '/:id/remove-from-team',
-  authorizeRoles(ROLES.SUPER_ADMIN, ROLES.TEAM_LEAD),
+  authorizeRoles(ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.TEAM_LEAD),
   removeAgentFromTeam
 );
 
 router.delete(
   '/:id',
-  authorizeRoles(ROLES.SUPER_ADMIN, ROLES.TEAM_LEAD, ROLES.DATA_ANALYST),
+  authorizeRoles(ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.TEAM_LEAD, ROLES.DATA_ANALYST),
   removeUserFromSystem
 );
 

@@ -19,7 +19,7 @@ const PublicRoute = () => {
   // Redirect cleanly authenticated users smoothly away from bare Login pages entirely
   if (isAuthenticated) {
     if (role === 'super_admin') return <Navigate to="/admin-dash" replace />;
-    if (role === 'manager') return <Navigate to="/manager-dash" replace />;
+    if (role === 'manager') return <Navigate to="/admin-dash" replace />;
     return <Navigate to="/dashboard" replace />;
   }
 

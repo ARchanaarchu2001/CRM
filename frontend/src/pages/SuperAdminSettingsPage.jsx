@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import CreateUserForm from '../components/users/CreateUserForm.jsx';
 import EditUserProfileModal from '../components/dashboard/EditUserProfileModal.jsx';
@@ -42,11 +42,22 @@ const SuperAdminSettingsPage = () => {
   const [editingUser, setEditingUser] = useState(null);
   const [isEditSubmitting, setIsEditSubmitting] = useState(false);
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
   const [isProfilePreviewOpen, setIsProfilePreviewOpen] = useState(false);
   const [profilePhotoFile, setProfilePhotoFile] = useState(null);
   const [profilePreview, setProfilePreview] = useState('');
   const [isProfileSubmitting, setIsProfileSubmitting] = useState(false);
   const fileInputRef = useRef(null);
+
+  const filteredUsers = useMemo(() => {
+    const normalizedSearch = searchTerm.trim().toLowerCase();
+
+    if (!normalizedSearch) {
+      return users;
+    }
+
+    return users.filter((user) => String(user.fullName || '').toLowerCase().includes(normalizedSearch));
+  }, [searchTerm, users]);
 
   useEffect(() => {
     setProfilePreview(currentUser?.profilePhoto ? getProfilePhotoUrl(currentUser.profilePhoto) : '');
@@ -385,9 +396,26 @@ const SuperAdminSettingsPage = () => {
       {error && <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">{error}</div>}
 
       <section className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-900">User Directory</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Search by user name only.
+            </p>
+          </div>
+          <div className="w-full sm:w-auto sm:min-w-[320px]">
+            <input
+              type="search"
+              value={searchTerm}
+              onChange={(event) => setSearchTerm(event.target.value)}
+              className="w-full rounded-xl border border-slate-300 px-4 py-2.5 text-sm text-slate-700 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+              placeholder="Search users by name"
+            />
+          </div>
+        </div>
         {isLoading ? (
           <div className="py-10 text-center text-slate-500">Loading user settings...</div>
-        ) : (
+        ) : filteredUsers.length ? (
           <div className="overflow-x-auto">
             <table className="min-w-full text-left text-sm text-slate-600">
               <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-700">
@@ -401,7 +429,7 @@ const SuperAdminSettingsPage = () => {
                 </tr>
               </thead>
               <tbody>
-                {users.map((user) => {
+                {filteredUsers.map((user) => {
                   const isAgent = user.role === 'agent';
                   const isTeamLead = user.role === 'team_lead';
                   const teamName = user.assignedTeam || user.team?.name || 'Unassigned';
@@ -479,6 +507,10 @@ const SuperAdminSettingsPage = () => {
                 })}
               </tbody>
             </table>
+          </div>
+        ) : (
+          <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-10 text-center text-sm text-slate-500">
+            No users matched "{searchTerm.trim()}".
           </div>
         )}
       </section>

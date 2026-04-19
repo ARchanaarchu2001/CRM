@@ -28,7 +28,7 @@ const LoginPage = () => {
           } else if (userRole === 'data_analyst') {
             navigate('/analyst-dash');
           } else if (userRole === 'manager') {
-            navigate('/manager-dash');
+            navigate('/admin-dash');
           } else if (userRole === 'agent') {
             navigate('/agent-dash');
           } else {

@@ -56,6 +56,43 @@ const escapeCsvValue = (value) => {
   return stringValue;
 };
 
+const matchesAnalystLeadSearch = (lead, query) => {
+  const safeSearch = String(query || '').trim().toLowerCase();
+  if (!safeSearch) {
+    return true;
+  }
+
+  const valuesToSearch = [
+    lead?.contactNumber,
+    lead?.batchName,
+    lead?.product,
+    ...Object.values(lead?.rawData || {}),
+  ];
+
+  return valuesToSearch.some((value) => String(value || '').toLowerCase().includes(safeSearch));
+};
+
+const matchesAnalystAssignmentSearch = (assignment, query) => {
+  const safeSearch = String(query || '').trim().toLowerCase();
+  if (!safeSearch) {
+    return true;
+  }
+
+  const valuesToSearch = [
+    assignment?.assignedAgentName,
+    assignment?.status,
+    assignment?.contactabilityStatus,
+    assignment?.callAttempt1Date,
+    assignment?.callAttempt2Date,
+    assignment?.callingRemark,
+    assignment?.interestedRemark,
+    assignment?.notInterestedRemark,
+    assignment?.agentNotes,
+  ];
+
+  return valuesToSearch.some((value) => String(value || '').toLowerCase().includes(safeSearch));
+};
+
 const AnalystDatasetPage = () => {
   const { batchId } = useParams();
   const navigate = useNavigate();
@@ -170,16 +207,20 @@ const AnalystDatasetPage = () => {
   const currentProduct = leads[0]?.product || leadFilters.product || '';
   const activeRemarkConfig =
     remarkConfigs.find((config) => config.product === currentProduct) || DEFAULT_REMARK_CONFIG;
-  const assignedRows = useMemo(
-    () =>
-      leads.flatMap((lead) =>
-        (lead.assignments || []).map((assignment) => ({
+  const assignedRows = useMemo(() => {
+    const safeSearch = leadFilters.search;
+
+    return leads.flatMap((lead) => {
+      const leadMatches = matchesAnalystLeadSearch(lead, safeSearch);
+
+      return (lead.assignments || [])
+        .filter((assignment) => leadMatches || matchesAnalystAssignmentSearch(assignment, safeSearch))
+        .map((assignment) => ({
           ...assignment,
           lead,
-        }))
-      ),
-    [leads]
-  );
+        }));
+    });
+  }, [leadFilters.search, leads]);
   const filteredAgents = useMemo(() => {
     const safeSearch = agentSearch.trim().toLowerCase();
     if (!safeSearch) {

@@ -30,8 +30,6 @@ import TeamLeadDash from './pages/TeamLeadDash';
 import TeamLeadSettingsPage from './pages/TeamLeadSettingsPage';
 import TeamLeadConversionPage from './pages/TeamLeadConversionPage';
 
-const ManagerDash = () => <div><h2 className="text-2xl font-bold text-blue-700">Manager Zone</h2><p>Managers and above can see this.</p></div>;
-
 function App() {
   return (
     <BrowserRouter>
@@ -51,7 +49,7 @@ function App() {
               
               <Route path="/dashboard" element={<DashboardHome />} />
               
-              <Route element={<RoleProtectedRoute allowedRoles={['super_admin']} />}>
+              <Route element={<RoleProtectedRoute allowedRoles={['super_admin', 'manager']} />}>
                 <Route path="/admin-dash" element={<SuperAdminDash />} />
                 <Route path="/admin-conversion" element={<SuperAdminConversionPage />} />
                 <Route path="/admin-settings" element={<SuperAdminSettingsPage />} />
@@ -90,7 +88,7 @@ function App() {
               </Route>
 
               <Route element={<RoleProtectedRoute allowedRoles={['manager', 'super_admin']} />}>
-                <Route path="/manager-dash" element={<ManagerDash />} />
+                <Route path="/manager-dash" element={<Navigate to="/admin-dash" replace />} />
               </Route>
 
               <Route element={<RoleProtectedRoute allowedRoles={['agent', 'team_lead', 'manager', 'super_admin']} />}>

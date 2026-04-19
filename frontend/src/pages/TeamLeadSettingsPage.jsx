@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import CreateAgentForm from '../components/users/CreateAgentForm';
 import UserAvatar from '../components/UserAvatar.jsx';
@@ -21,6 +21,17 @@ const TeamLeadSettingsPage = () => {
   const [editingUser, setEditingUser] = useState(null);
   const [isEditSubmitting, setIsEditSubmitting] = useState(false);
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+
+  const filteredUsers = useMemo(() => {
+    const normalizedSearch = searchTerm.trim().toLowerCase();
+
+    if (!normalizedSearch) {
+      return users;
+    }
+
+    return users.filter((user) => String(user.agentName || '').toLowerCase().includes(normalizedSearch));
+  }, [searchTerm, users]);
 
   const loadUsers = async () => {
     setIsLoading(true);
@@ -170,9 +181,24 @@ const TeamLeadSettingsPage = () => {
       {error && <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">{error}</div>}
 
       <section className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-900">Team Agents</h2>
+            <p className="mt-1 text-sm text-slate-500">Search by agent name only.</p>
+          </div>
+          <div className="w-full sm:w-auto sm:min-w-[320px]">
+            <input
+              type="search"
+              value={searchTerm}
+              onChange={(event) => setSearchTerm(event.target.value)}
+              className="w-full rounded-xl border border-slate-300 px-4 py-2.5 text-sm text-slate-700 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+              placeholder="Search agents by name"
+            />
+          </div>
+        </div>
         {isLoading ? (
           <div className="py-10 text-center text-slate-500">Loading team users...</div>
-        ) : (
+        ) : filteredUsers.length ? (
           <div className="overflow-x-auto">
             <table className="min-w-full text-left text-sm text-slate-600">
               <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-700">
@@ -185,7 +211,7 @@ const TeamLeadSettingsPage = () => {
                 </tr>
               </thead>
               <tbody>
-                {users.map((user) => (
+                {filteredUsers.map((user) => (
                   <tr key={user.agentId} className="border-t border-slate-100">
                     <td className="px-4 py-4">
                       <div className="flex items-center gap-3">
@@ -237,6 +263,10 @@ const TeamLeadSettingsPage = () => {
                 ))}
               </tbody>
             </table>
+          </div>
+        ) : (
+          <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-10 text-center text-sm text-slate-500">
+            No agents matched "{searchTerm.trim()}".
           </div>
         )}
       </section>

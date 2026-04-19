@@ -19,7 +19,7 @@ router.get('/profile', getUserProfile);
 // Using exact role matching for specific restrictions or 'authorizeMinimumRole' for hierarchy grouping
 router.get(
   '/admin-only',
-  authorizeRoles(ROLES.SUPER_ADMIN),
+  authorizeRoles(ROLES.SUPER_ADMIN, ROLES.MANAGER),
   getAdminOnly
 );
 

@@ -111,7 +111,7 @@ const ensureTeamForLeadUser = async (leadUser, actorId = null) => {
 export const createUserByAdmin = asyncHandler(async (req, res) => {
   const { fullName, email, password, role, phoneNumber, employeeId, assignedTeam, teamId, teamName } = req.body;
   
-  if (![ROLES.SUPER_ADMIN, ROLES.DATA_ANALYST].includes(req.user.role)) {
+  if (![ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.DATA_ANALYST].includes(req.user.role)) {
     return res.status(403).json({ success: false, message: 'Forbidden' });
   }
 
@@ -253,7 +253,7 @@ const getManageableAgent = async ({ requester, targetUserId, allowUnassigned = f
     return null;
   }
 
-  if (requester.role === ROLES.SUPER_ADMIN) {
+  if ([ROLES.SUPER_ADMIN, ROLES.MANAGER].includes(requester.role)) {
     return targetUser;
   }
 
@@ -281,7 +281,7 @@ const getScopedAgentQuery = (currentUser) => {
     };
   }
 
-  if (currentUser.role === ROLES.SUPER_ADMIN) {
+  if ([ROLES.SUPER_ADMIN, ROLES.MANAGER].includes(currentUser.role)) {
     return {
       role: ROLES.AGENT,
       isDeleted: false,
@@ -480,12 +480,12 @@ const attachMetricsToAgents = async (agents) => {
  * @access  Private/SuperAdmin
  */
 export const getAllUsersForAdmin = asyncHandler(async (req, res) => {
-  if (![ROLES.SUPER_ADMIN, ROLES.DATA_ANALYST].includes(req.user.role)) {
+  if (![ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.DATA_ANALYST].includes(req.user.role)) {
     return res.status(403).json({ success: false, message: 'Forbidden' });
   }
   
   const allowedRoles =
-    req.user.role === ROLES.SUPER_ADMIN
+    [ROLES.SUPER_ADMIN, ROLES.MANAGER].includes(req.user.role)
       ? { isDeleted: false }
       : { isDeleted: false, role: { $in: [ROLES.AGENT, ROLES.TEAM_LEAD] } };
 
@@ -500,7 +500,7 @@ export const getAllUsersForAdmin = asyncHandler(async (req, res) => {
 });
 
 export const getTeamLeadDashboard = asyncHandler(async (req, res) => {
-  if (req.user.role !== ROLES.TEAM_LEAD) {
+  if (![ROLES.TEAM_LEAD, ROLES.MANAGER].includes(req.user.role)) {
     return res.status(403).json({ success: false, message: 'Forbidden' });
   }
 
@@ -517,7 +517,7 @@ export const getTeamLeadDashboard = asyncHandler(async (req, res) => {
 
   res.status(200).json({
     success: true,
-    scope: 'team_lead',
+    scope: req.user.role === ROLES.MANAGER ? 'manager' : 'team_lead',
     dashboard: analytics,
   });
 });
@@ -556,7 +556,7 @@ export const getAgentSelfDashboard = asyncHandler(async (req, res) => {
 });
 
 export const getSuperAdminDashboard = asyncHandler(async (req, res) => {
-  if (req.user.role !== ROLES.SUPER_ADMIN) {
+  if (![ROLES.SUPER_ADMIN, ROLES.MANAGER].includes(req.user.role)) {
     return res.status(403).json({ success: false, message: 'Forbidden' });
   }
 
@@ -578,7 +578,7 @@ export const getSuperAdminDashboard = asyncHandler(async (req, res) => {
 
   res.status(200).json({
     success: true,
-    scope: 'super_admin',
+    scope: [ROLES.SUPER_ADMIN, ROLES.MANAGER].includes(req.user.role) ? 'admin' : 'super_admin',
     dashboard: {
       ...analytics,
       ...conversionOverview,
@@ -766,7 +766,7 @@ export const getUserById = asyncHandler(async (req, res) => {
     if (![ROLES.AGENT, ROLES.TEAM_LEAD].includes(targetUser.role)) {
       return res.status(403).json({ success: false, message: 'Forbidden' });
     }
-  } else if (req.user.role !== ROLES.SUPER_ADMIN) {
+  } else if (![ROLES.SUPER_ADMIN, ROLES.MANAGER].includes(req.user.role)) {
     // Other roles not implemented strictly for this lookup feature
     return res.status(403).json({ success: false, message: 'Forbidden' });
   }
@@ -835,7 +835,7 @@ export const updateUser = asyncHandler(async (req, res) => {
     delete req.body.isActive;
     delete req.body.isDeleted;
     delete req.body.updatedBy;
-  } else if (req.user.role !== ROLES.SUPER_ADMIN) {
+  } else if (![ROLES.SUPER_ADMIN, ROLES.MANAGER].includes(req.user.role)) {
     return res.status(403).json({ success: false, message: 'Forbidden' });
   }
 
@@ -903,7 +903,7 @@ export const deactivateUser = asyncHandler(async (req, res) => {
 export const restoreUser = reactivateUser;
 
 export const getTeams = asyncHandler(async (req, res) => {
-  if (![ROLES.SUPER_ADMIN, ROLES.DATA_ANALYST].includes(req.user.role)) {
+  if (![ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.DATA_ANALYST].includes(req.user.role)) {
     return res.status(403).json({ success: false, message: 'Forbidden' });
   }
 
@@ -929,7 +929,7 @@ export const getTeams = asyncHandler(async (req, res) => {
 });
 
 export const moveAgentToTeam = asyncHandler(async (req, res) => {
-  if (![ROLES.SUPER_ADMIN, ROLES.DATA_ANALYST].includes(req.user.role)) {
+  if (![ROLES.SUPER_ADMIN, ROLES.MANAGER, ROLES.DATA_ANALYST].includes(req.user.role)) {
     return res.status(403).json({ success: false, message: 'Forbidden' });
   }
 
