@@ -211,7 +211,13 @@ const buildDuplicateStatus = ({ seenInFile, existsInSystem }) => {
   return 'unique';
 };
 
-const getTodayDateString = () => new Date().toISOString().slice(0, 10);
+const getTodayDateString = () => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
 
 const ANALYTICS_TEAM_POPULATE = [
   { path: 'teamLead', select: 'fullName assignedTeam' },

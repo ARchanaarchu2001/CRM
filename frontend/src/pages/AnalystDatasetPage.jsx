@@ -424,6 +424,30 @@ const AnalystDatasetPage = () => {
     );
   };
 
+  const handleAssignmentMouseDown = (assignmentId) => {
+    const isAlreadySelected = selectedAssignmentIds.includes(assignmentId);
+    const nextMode = isAlreadySelected ? 'deselect' : 'select';
+    setDragSelectionMode(nextMode);
+    setIsDragSelecting(true);
+    setSelectedAssignmentIds((current) =>
+      nextMode === 'select'
+        ? Array.from(new Set([...current, assignmentId]))
+        : current.filter((id) => id !== assignmentId)
+    );
+  };
+
+  const handleAssignmentMouseEnter = (assignmentId) => {
+    if (!isDragSelecting) {
+      return;
+    }
+
+    setSelectedAssignmentIds((current) =>
+      dragSelectionMode === 'select'
+        ? Array.from(new Set([...current, assignmentId]))
+        : current.filter((id) => id !== assignmentId)
+    );
+  };
+
   const handleUnassign = async () => {
     if (!selectedAssignmentIds.length) {
       setActionMessage('Choose assigned rows before unassigning.');
@@ -927,11 +951,22 @@ const AnalystDatasetPage = () => {
 
                           if (columnKey === 'pick') {
                             return (
-                              <td key={`${assignment._id}-${columnKey}`} className={cellClassName} style={getColumnStyle(columnKey)}>
+                              <td
+                                key={`${assignment._id}-${columnKey}`}
+                                className={`${cellClassName} cursor-pointer`}
+                                style={getColumnStyle(columnKey)}
+                                onMouseDown={(event) => {
+                                  event.preventDefault();
+                                  handleAssignmentMouseDown(assignment._id);
+                                }}
+                                onMouseEnter={() => handleAssignmentMouseEnter(assignment._id)}
+                              >
                                 <input
                                   type="checkbox"
                                   checked={selectedAssignmentIds.includes(assignment._id)}
                                   onChange={() => toggleAssignment(assignment._id)}
+                                  readOnly
+                                  className="pointer-events-none"
                                 />
                               </td>
                             );

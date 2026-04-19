@@ -1,13 +1,18 @@
 const PRODUCT_ORDER = ['p2p', 'mnp', 'fne', 'plus', 'general'];
 const RESOLVED_STATUSES = new Set(['submitted', 'activated', 'completed']);
 
-const toUtcStartOfDay = (date) =>
-  new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 0, 0, 0, 0));
+const toLocalStartOfDay = (date) =>
+  new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0);
 
-const toUtcEndOfDay = (date) =>
-  new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 23, 59, 59, 999));
+const toLocalEndOfDay = (date) =>
+  new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
 
-const formatDateKey = (date) => date.toISOString().slice(0, 10);
+const formatDateKey = (date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
 
 const parseDateInput = (value) => {
   if (!value) return null;
@@ -16,7 +21,7 @@ const parseDateInput = (value) => {
 
   if (/^\d{4}-\d{2}-\d{2}$/.test(asString)) {
     const [year, month, day] = asString.split('-').map(Number);
-    return new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
+    return new Date(year, month - 1, day, 0, 0, 0, 0);
   }
 
   const parsed = new Date(asString);
@@ -32,7 +37,6 @@ const createTrendBucket = (date) => ({
   label: date.toLocaleDateString('en-US', {
     month: 'short',
     day: 'numeric',
-    timeZone: 'UTC',
   }),
   dials: 0,
   submissions: 0,
@@ -43,30 +47,30 @@ export const getTodayDateString = () => formatDateKey(new Date());
 
 export const resolveDateRange = ({ range = 'today', from, to }) => {
   const now = new Date();
-  const today = toUtcStartOfDay(now);
+  const today = toLocalStartOfDay(now);
   let normalizedRange = String(range || 'today').toLowerCase();
   let startDate = today;
   let endDate = today;
 
   if (normalizedRange === 'yesterday') {
     startDate = new Date(today);
-    startDate.setUTCDate(startDate.getUTCDate() - 1);
+    startDate.setDate(startDate.getDate() - 1);
     endDate = new Date(startDate);
   } else if (normalizedRange === 'week') {
-    const dayOfWeek = today.getUTCDay();
+    const dayOfWeek = today.getDay();
     const diffToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
     startDate = new Date(today);
-    startDate.setUTCDate(startDate.getUTCDate() - diffToMonday);
+    startDate.setDate(startDate.getDate() - diffToMonday);
     endDate = today;
   } else if (normalizedRange === 'month') {
-    startDate = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1, 0, 0, 0, 0));
+    startDate = new Date(today.getFullYear(), today.getMonth(), 1, 0, 0, 0, 0);
     endDate = today;
   } else if (normalizedRange === 'year') {
-    startDate = new Date(Date.UTC(today.getUTCFullYear(), 0, 1, 0, 0, 0, 0));
+    startDate = new Date(today.getFullYear(), 0, 1, 0, 0, 0, 0);
     endDate = today;
   } else if (normalizedRange === 'last_year') {
-    startDate = new Date(Date.UTC(today.getUTCFullYear() - 1, 0, 1, 0, 0, 0, 0));
-    endDate = new Date(Date.UTC(today.getUTCFullYear() - 1, 11, 31, 23, 59, 59, 999));
+    startDate = new Date(today.getFullYear() - 1, 0, 1, 0, 0, 0, 0);
+    endDate = new Date(today.getFullYear() - 1, 11, 31, 23, 59, 59, 999);
   } else if (normalizedRange === 'custom') {
     const parsedFrom = parseDateInput(from);
     const parsedTo = parseDateInput(to);
@@ -75,8 +79,8 @@ export const resolveDateRange = ({ range = 'today', from, to }) => {
       throw new Error('Custom range requires valid from and to dates');
     }
 
-    startDate = toUtcStartOfDay(parsedFrom);
-    endDate = toUtcStartOfDay(parsedTo);
+    startDate = toLocalStartOfDay(parsedFrom);
+    endDate = toLocalStartOfDay(parsedTo);
 
     if (startDate > endDate) {
       throw new Error('The from date must be earlier than or equal to the to date');
@@ -90,7 +94,7 @@ export const resolveDateRange = ({ range = 'today', from, to }) => {
     from: formatDateKey(startDate),
     to: formatDateKey(endDate),
     fromDate: startDate,
-    toDate: toUtcEndOfDay(endDate),
+    toDate: toLocalEndOfDay(endDate),
     displayLabel:
       normalizedRange === 'today'
         ? 'Today'
@@ -154,26 +158,26 @@ const buildTrendSeries = (rangeInfo) => {
     
     if (interval === 'month') {
       bucket.date = `${pointer.getUTCFullYear()}-${String(pointer.getUTCMonth() + 1).padStart(2, '0')}`;
-      bucket.label = pointer.toLocaleDateString('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' });
+      bucket.label = pointer.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
     } else if (interval === 'week') {
       // Find Monday as the week key
       const temp = new Date(pointer);
-      const day = temp.getUTCDay();
+      const day = temp.getDay();
       const diff = day === 0 ? 6 : day - 1;
-      temp.setUTCDate(temp.getUTCDate() - diff);
+      temp.setDate(temp.getDate() - diff);
       bucket.date = formatDateKey(temp);
-      bucket.label = `Week of ${temp.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })}`;
+      bucket.label = `Week of ${temp.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
     }
 
     series.push(bucket);
 
     if (interval === 'month') {
-      pointer.setUTCMonth(pointer.getUTCMonth() + 1);
-      pointer.setUTCDate(1);
+      pointer.setMonth(pointer.getMonth() + 1);
+      pointer.setDate(1);
     } else if (interval === 'week') {
-      pointer.setUTCDate(pointer.getUTCDate() + 7);
+      pointer.setDate(pointer.getDate() + 7);
     } else {
-      pointer.setUTCDate(pointer.getUTCDate() + 1);
+      pointer.setDate(pointer.getDate() + 1);
     }
   }
 
@@ -194,14 +198,14 @@ const getDateKeyWithinRange = (dateValue, rangeInfo) => {
   const diffDays = Math.ceil((rangeInfo.toDate - rangeInfo.fromDate) / (1000 * 60 * 60 * 24));
   if (diffDays > 366) {
     // Return month key
-    return `${parsed.getUTCFullYear()}-${String(parsed.getUTCMonth() + 1).padStart(2, '0')}`;
+    return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}`;
   } 
   if (diffDays > 62) {
     // Return week key (Monday)
     const temp = new Date(parsed);
-    const day = temp.getUTCDay();
+    const day = temp.getDay();
     const diff = day === 0 ? 6 : day - 1;
-    temp.setUTCDate(temp.getUTCDate() - diff);
+    temp.setDate(temp.getDate() - diff);
     return formatDateKey(temp);
   }
 
@@ -214,11 +218,33 @@ const getWorkedDateHits = (assignment, rangeInfo) =>
     return parsed && parsed >= rangeInfo.fromDate && parsed <= rangeInfo.toDate;
   });
 
-const isAssignedInRange = (assignment, rangeInfo) => isDateWithinRange(assignment.createdAt, rangeInfo);
+const hasMeaningfulInteraction = (assignment) =>
+  Boolean(
+    assignment.contactabilityStatus ||
+      assignment.callingRemark ||
+      assignment.interestedRemark ||
+      assignment.notInterestedRemark ||
+      assignment.agentNotes ||
+      assignment.callAttempt1Date ||
+      assignment.callAttempt2Date ||
+      assignment.status
+  );
 
-const isPendingAssignmentInRange = (assignment, rangeInfo) => {
-  return isAssignedInRange(assignment, rangeInfo) && getWorkedDateHits(assignment, rangeInfo).length === 0;
+const getDialDateHits = (assignment, rangeInfo) => {
+  const workedDateHits = getWorkedDateHits(assignment, rangeInfo);
+  if (workedDateHits.length > 0) {
+    return workedDateHits;
+  }
+
+  if (!hasMeaningfulInteraction(assignment)) {
+    return [];
+  }
+
+  const updatedDateKey = getDateKeyWithinRange(assignment.updatedAt, rangeInfo);
+  return updatedDateKey ? [updatedDateKey] : [];
 };
+
+const isAssignedInRange = (assignment, rangeInfo) => isDateWithinRange(assignment.createdAt, rangeInfo);
 
 const isPipelineActiveAssignment = (assignment) =>
   assignment.inPipeline === true && !RESOLVED_STATUSES.has(String(assignment.status || '').toLowerCase());
@@ -349,9 +375,9 @@ export const buildDashboardAnalytics = ({ agents, assignments, rangeInfo, includ
     const globalProductBucket = getProductBucket(productPerformance, productKey);
     const agentProductBucket = getProductBucket(perAgentProductPerformance.get(agentId), productKey);
 
-    const workedDateHits = getWorkedDateHits(assignment, rangeInfo);
+    const workedDateHits = getDialDateHits(assignment, rangeInfo);
     const assignedInRange = isAssignedInRange(assignment, rangeInfo);
-    const dialedInRange = assignedInRange && workedDateHits.length > 0;
+    const dialedInRange = workedDateHits.length > 0;
 
     if (assignedInRange) {
       agentMetrics.totalAssignedLeads += 1;
@@ -418,11 +444,11 @@ export const buildDashboardAnalytics = ({ agents, assignments, rangeInfo, includ
       updateLastActivity(agentMetrics, assignment.updatedAt || assignment.pipelineFollowUpDate);
     }
 
-    if (isPendingAssignmentInRange(assignment, rangeInfo)) {
-      summary.pendingLeads += 1;
-      agentMetrics.pendingLeads += 1;
-      updateLastActivity(agentMetrics, assignment.createdAt);
-    }
+  }
+
+  for (const agentMetrics of agentMap.values()) {
+    agentMetrics.pendingLeads = Math.max((agentMetrics.totalAssignedLeads || 0) - (agentMetrics.dials || 0), 0);
+    summary.pendingLeads += agentMetrics.pendingLeads;
   }
 
   if (includeTeamComparison) {
