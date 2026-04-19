@@ -18,6 +18,10 @@ export const canCreateUser = (currentUserRole, targetRole) => {
     return true; // Super Admin can create any role
   }
 
+  if (currentUserRole === ROLES.DATA_ANALYST) {
+    return [ROLES.TEAM_LEAD, ROLES.AGENT].includes(targetRole);
+  }
+
   if (currentUserRole === ROLES.TEAM_LEAD) {
     return targetRole === ROLES.AGENT; // Team Lead can strictly only create agents
   }
@@ -42,6 +46,10 @@ export const canModifyOrDeleteUser = (currentUser, targetUser) => {
   // Super Admin has full authority
   if (currentUser.role === ROLES.SUPER_ADMIN) {
     return true; 
+  }
+
+  if (currentUser.role === ROLES.DATA_ANALYST) {
+    return [ROLES.AGENT, ROLES.TEAM_LEAD].includes(targetUser.role);
   }
 
   // Team Lead constraints
@@ -71,6 +79,13 @@ export const canModifyOrDeleteUser = (currentUser, targetUser) => {
 export const getSafeUserFetchScope = (currentUser) => {
   if (currentUser.role === ROLES.SUPER_ADMIN) {
     return { isDeleted: false }; // See all active/non-deleted users globally
+  }
+
+  if (currentUser.role === ROLES.DATA_ANALYST) {
+    return {
+      role: { $in: [ROLES.AGENT, ROLES.TEAM_LEAD] },
+      isDeleted: false,
+    };
   }
 
   if (currentUser.role === ROLES.TEAM_LEAD) {

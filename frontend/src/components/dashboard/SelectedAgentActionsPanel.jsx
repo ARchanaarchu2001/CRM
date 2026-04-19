@@ -1,4 +1,5 @@
 import React from 'react';
+import { getProfilePhotoUrl } from '../../utils/profilePhoto.js';
 
 const SelectedAgentActionsPanel = ({
   selectedAgent = null,
@@ -27,7 +28,7 @@ const SelectedAgentActionsPanel = ({
           <div className="flex items-center gap-3 rounded-2xl bg-slate-50 px-4 py-3">
             {selectedAgent.profilePhoto ? (
               <img
-                src={`/uploads/${selectedAgent.profilePhoto}`}
+                src={getProfilePhotoUrl(selectedAgent.profilePhoto)}
                 alt={selectedAgent.agentName}
                 className="h-12 w-12 rounded-full border border-slate-200 object-cover"
               />

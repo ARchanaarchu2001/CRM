@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { getTeamLeadAgents, deactivateUser, resetState, updateAgentMetricsDirectly } from '../../features/users/userManagementSlice';
 import { socket, connectSocket } from '../../utils/socketClient';
+import { getProfilePhotoUrl } from '../../utils/profilePhoto.js';
 
 const AgentList = () => {
   const dispatch = useDispatch();
@@ -100,7 +101,7 @@ const AgentList = () => {
                     <div className="flex items-center gap-3">
                       {agent.profilePhoto ? (
                         <img 
-                          src={`/uploads/${agent.profilePhoto}`} 
+                          src={getProfilePhotoUrl(agent.profilePhoto)} 
                           alt={agent.fullName} 
                           className="h-10 w-10 rounded-full object-cover border border-slate-200"
                         />

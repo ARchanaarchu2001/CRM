@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import DateFilterBar from '../components/dashboard/DateFilterBar.jsx';
 import { fetchTeamLeadConversionOverview } from '../api/leads.js';
 import { buildDashboardParams, getDefaultDashboardFilter, getFilterBadgeLabel } from '../utils/dashboard.js';
+import { getProfilePhotoUrl } from '../utils/profilePhoto.js';
 
 const TeamLeadConversionPage = () => {
   const [filter, setFilter] = useState(getDefaultDashboardFilter);
@@ -96,7 +97,7 @@ const TeamLeadConversionPage = () => {
                       <td className="px-4 py-4">
                         <div className="flex items-center gap-3">
                           {agent.profilePhoto ? (
-                            <img src={`/uploads/${agent.profilePhoto}`} alt={agent.agentName} className="h-10 w-10 rounded-full border border-slate-200 object-cover" />
+                            <img src={getProfilePhotoUrl(agent.profilePhoto)} alt={agent.agentName} className="h-10 w-10 rounded-full border border-slate-200 object-cover" />
                           ) : (
                             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 font-semibold text-slate-700">
                               {agent.agentName?.charAt(0)?.toUpperCase() || 'A'}

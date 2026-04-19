@@ -2,13 +2,13 @@ import React, { useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { updateDashboardUser } from '../api/dashboard.js';
 import { fetchMe } from '../features/auth/authSlice.js';
-import { PROFILE_PHOTO_ACCEPT, validateProfilePhotoFile } from '../utils/profilePhoto.js';
+import { PROFILE_PHOTO_ACCEPT, getProfilePhotoUrl, validateProfilePhotoFile } from '../utils/profilePhoto.js';
 
 const AgentSettingsPage = () => {
   const dispatch = useDispatch();
   const { user, role } = useSelector((state) => state.auth);
   const [profilePhotoFile, setProfilePhotoFile] = useState(null);
-  const [photoPreview, setPhotoPreview] = useState(user?.profilePhoto ? `/uploads/${user.profilePhoto}` : '');
+  const [photoPreview, setPhotoPreview] = useState(user?.profilePhoto ? getProfilePhotoUrl(user.profilePhoto) : '');
   const [isPhotoSubmitting, setIsPhotoSubmitting] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');

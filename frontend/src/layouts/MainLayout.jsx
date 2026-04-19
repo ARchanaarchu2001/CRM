@@ -1,15 +1,17 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { logoutUser } from '../features/auth/authSlice.js';
 import { connectSocket, disconnectSocket, registerSocketPresence } from '../utils/socketClient.js';
 import UserAvatar from '../components/UserAvatar.jsx';
+import { getProfilePhotoUrl } from '../utils/profilePhoto.js';
 
 const MainLayout = () => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const location = useLocation();
   const { user, role } = useSelector((state) => state.auth);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
 
   useEffect(() => {
     if (!user?._id) return;
@@ -26,6 +28,16 @@ const MainLayout = () => {
     disconnectSocket();
     await dispatch(logoutUser());
     navigate('/login');
+  };
+
+  const handleOpenPreview = () => {
+    if (role === 'data_analyst' && user?.profilePhoto) {
+      setIsPreviewOpen(true);
+    }
+  };
+
+  const handleClosePreview = () => {
+    setIsPreviewOpen(false);
   };
 
   const handleNavClick = (event, targetPath) => {
@@ -122,7 +134,9 @@ const firstName = getDisplayName();
       to:
         role === 'agent'
           ? '/agent-dash'
-          : role === 'data_analyst'
+          : ['super_admin', 'manager'].includes(role)
+            ? '/admin-dash'
+            : role === 'data_analyst'
             ? '/analyst-dash'
             : '/dashboard',
       label: 'Home',
@@ -141,14 +155,12 @@ const firstName = getDisplayName();
     { to: '/agent-pipeline', label: 'Pipeline', show: ['agent'].includes(role) },
     { to: '/agent-settings', label: 'Settings', show: ['agent'].includes(role) },
 
-    { to: '/manager-dash', label: 'Manager', show: ['manager'].includes(role) },
-
     { to: '/team-lead-dash', label: 'Team Lead', show: ['manager'].includes(role) },
     { to: '/team-lead-conversion', label: 'Data Conversion', show: ['team_lead'].includes(role) },
     { to: '/team-lead-settings', label: 'Settings', show: ['team_lead'].includes(role) },
 
-    { to: '/admin-conversion', label: 'Product Conversion', show: ['super_admin'].includes(role) },
-    { to: '/admin-settings', label: 'Settings', show: ['super_admin'].includes(role) },
+    { to: '/admin-conversion', label: 'Product Conversion', show: ['super_admin', 'manager'].includes(role) },
+    { to: '/admin-settings', label: 'Settings', show: ['super_admin', 'manager'].includes(role) },
   ];
 
   const isWideTablePage =
@@ -158,6 +170,8 @@ const firstName = getDisplayName();
     /\/team-lead\/agents\/[^/]+\/batches\/[^/]+$/.test(location.pathname) ||
     /\/analyst\/agents\/[^/]+\/batches\/[^/]+$/.test(location.pathname) ||
     /\/team-lead\/agents\/[^/]+\/queue\/[^/]+$/.test(location.pathname);
+    /\/analyst\/agents\/[^/]+\/batches\/[^/]+$/.test(location.pathname);
+  const previewPhotoUrl = getProfilePhotoUrl(user?.profilePhoto || '');
 
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col">
@@ -165,11 +179,21 @@ const firstName = getDisplayName();
         <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-4 sm:px-6 lg:px-8">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="flex items-center gap-4">
-              <UserAvatar
-                src={user?.profilePhoto}
-                alt={user?.fullName || 'User avatar'}
-                className="h-14 w-14 rounded-full border border-slate-200 object-cover shadow-sm"
-              />
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={handleOpenPreview}
+                  disabled={role !== 'data_analyst' || !user?.profilePhoto}
+                  className={`block rounded-full ${role === 'data_analyst' && user?.profilePhoto ? 'cursor-zoom-in' : 'cursor-default'}`}
+                  aria-label={role === 'data_analyst' && user?.profilePhoto ? 'Preview profile photo' : 'Profile photo'}
+                >
+                  <UserAvatar
+                    src={user?.profilePhoto}
+                    alt={user?.fullName || 'User avatar'}
+                    className="h-14 w-14 rounded-full border border-slate-200 object-cover shadow-sm"
+                  />
+                </button>
+              </div>
               <div>
               <div className="flex items-center gap-3 flex-wrap">
                 <h1 className="text-2xl font-bold text-slate-900">{welcomeContent.title}</h1>
@@ -177,9 +201,9 @@ const firstName = getDisplayName();
                   {welcomeContent.badge}
                 </span> */}
               </div>
-              <p className="mt-1 text-sm text-slate-500">{welcomeContent.subtitle}</p>
-              </div>
-            </div>
+               <p className="mt-1 text-sm text-slate-500">{welcomeContent.subtitle}</p>
+               </div>
+             </div>
 
             <div className="flex items-center space-x-4">
               {user && (
@@ -218,6 +242,38 @@ const firstName = getDisplayName();
           <Outlet />
         </div>
       </main>
+
+      {role === 'data_analyst' && isPreviewOpen && previewPhotoUrl && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 px-4 py-8"
+          onClick={handleClosePreview}
+        >
+          <div
+            className="relative w-full max-w-4xl rounded-[2rem] bg-white p-4 shadow-2xl sm:p-6"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={handleClosePreview}
+              className="absolute right-4 top-4 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+            >
+              Close
+            </button>
+            <div className="mb-4 pr-20">
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Profile Preview</p>
+              <h2 className="mt-2 text-2xl font-bold text-slate-900">{user?.fullName || 'Analyst'}</h2>
+              <p className="mt-1 text-sm text-slate-500">{user?.email || ''}</p>
+            </div>
+            <div className="overflow-hidden rounded-[1.5rem] bg-slate-100">
+              <img
+                src={previewPhotoUrl}
+                alt={user?.fullName || 'Profile photo preview'}
+                className="max-h-[75vh] w-full object-contain"
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

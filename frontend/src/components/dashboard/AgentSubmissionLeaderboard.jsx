@@ -1,4 +1,5 @@
 import React from 'react';
+import { getProfilePhotoUrl } from '../../utils/profilePhoto.js';
 import {
   Bar,
   BarChart,
@@ -36,7 +37,7 @@ const AgentAvatar = ({ agent }) => {
   if (agent.profilePhoto) {
     return (
       <img
-        src={`/uploads/${agent.profilePhoto}`}
+        src={getProfilePhotoUrl(agent.profilePhoto)}
         alt={agent.agentName}
         className="h-11 w-11 rounded-full border border-slate-200 object-cover shadow-sm"
       />

@@ -1,4 +1,5 @@
 import React from 'react';
+import { getProfilePhotoUrl } from '../utils/profilePhoto.js';
 
 const DEFAULT_AVATAR =
   "data:image/svg+xml;utf8," +
@@ -18,7 +19,7 @@ const DEFAULT_AVATAR =
 
 const UserAvatar = ({ src = '', alt = 'User avatar', className = '' }) => (
   <img
-    src={src ? `/uploads/${src}` : DEFAULT_AVATAR}
+    src={src ? getProfilePhotoUrl(src) : DEFAULT_AVATAR}
     alt={alt}
     className={className}
   />

@@ -64,7 +64,7 @@ function App() {
                 <Route path="/analyst-saved-reports" element={<SavedReportsPage />} />
                 <Route path="/analyst-agent-performance" element={<AnalystAgentPerformancePage />} />
                 <Route path="/analyst-dash/:batchId" element={<AnalystDatasetPage />} />
-                <Route path="/analyst-settings" element={<AgentSettingsPage />} />
+                <Route path="/analyst-settings" element={<SuperAdminSettingsPage />} />
                 <Route path="/lead-settings" element={<LeadSettingsPage />} />
               </Route>
 

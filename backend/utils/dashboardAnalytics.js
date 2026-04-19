@@ -214,9 +214,10 @@ const getWorkedDateHits = (assignment, rangeInfo) =>
     return parsed && parsed >= rangeInfo.fromDate && parsed <= rangeInfo.toDate;
   });
 
+const isAssignedInRange = (assignment, rangeInfo) => isDateWithinRange(assignment.createdAt, rangeInfo);
+
 const isPendingAssignmentInRange = (assignment, rangeInfo) => {
-  const createdAtInRange = isDateWithinRange(assignment.createdAt, rangeInfo);
-  return createdAtInRange && (!assignment.workedDates || assignment.workedDates.length === 0);
+  return isAssignedInRange(assignment, rangeInfo) && getWorkedDateHits(assignment, rangeInfo).length === 0;
 };
 
 const isPipelineActiveAssignment = (assignment) =>
@@ -344,19 +345,19 @@ export const buildDashboardAnalytics = ({ agents, assignments, rangeInfo, includ
     const agentMetrics = agentMap.get(agentId);
     if (!agentMetrics) continue;
 
-    agentMetrics.totalAssignedLeads += 1;
-
     const productKey = String(assignment.product || 'general').toLowerCase();
     const globalProductBucket = getProductBucket(productPerformance, productKey);
     const agentProductBucket = getProductBucket(perAgentProductPerformance.get(agentId), productKey);
 
     const workedDateHits = getWorkedDateHits(assignment, rangeInfo);
-    for (const workedDate of workedDateHits) {
-      summary.dials += 1;
-      agentMetrics.dials += 1;
-      if (globalProductBucket) globalProductBucket.dials += 1;
-      if (agentProductBucket) agentProductBucket.dials += 1;
+    const assignedInRange = isAssignedInRange(assignment, rangeInfo);
+    const dialedInRange = assignedInRange && workedDateHits.length > 0;
 
+    if (assignedInRange) {
+      agentMetrics.totalAssignedLeads += 1;
+    }
+
+    for (const workedDate of workedDateHits) {
       const dayKey = formatDateKey(parseDateInput(workedDate));
       const dayBucket = trendMap.get(dayKey);
       if (dayBucket) {
@@ -364,6 +365,13 @@ export const buildDashboardAnalytics = ({ agents, assignments, rangeInfo, includ
       }
 
       updateLastActivity(agentMetrics, assignment.updatedAt || workedDate);
+    }
+
+    if (dialedInRange) {
+      summary.dials += 1;
+      agentMetrics.dials += 1;
+      if (globalProductBucket) globalProductBucket.dials += 1;
+      if (agentProductBucket) agentProductBucket.dials += 1;
     }
 
     const submissionDate = getSubmissionDate(assignment);

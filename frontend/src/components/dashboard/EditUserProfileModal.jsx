@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { FiEye, FiEyeOff } from 'react-icons/fi';
-import { PROFILE_PHOTO_ACCEPT, validateProfilePhotoFile } from '../../utils/profilePhoto.js';
+import { PROFILE_PHOTO_ACCEPT, getProfilePhotoUrl, validateProfilePhotoFile } from '../../utils/profilePhoto.js';
 
 const EditUserProfileModal = ({
   isOpen,
@@ -32,7 +32,7 @@ const EditUserProfileModal = ({
       password: '',
     });
     setProfilePhotoFile(null);
-    setPhotoPreview(user.profilePhoto ? `/uploads/${user.profilePhoto}` : '');
+    setPhotoPreview(user.profilePhoto ? getProfilePhotoUrl(user.profilePhoto) : '');
     setShowPassword(false);
     setFileError('');
     if (fileInputRef.current) {

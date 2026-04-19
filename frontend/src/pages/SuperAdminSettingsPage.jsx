@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { useDispatch, useSelector } from 'react-redux';
 import CreateUserForm from '../components/users/CreateUserForm.jsx';
 import EditUserProfileModal from '../components/dashboard/EditUserProfileModal.jsx';
 import MoveAgentToTeamModal from '../components/dashboard/MoveAgentToTeamModal.jsx';
@@ -12,6 +13,12 @@ import {
   removeDashboardUser,
   updateDashboardUser,
 } from '../api/dashboard.js';
+import { fetchMe } from '../features/auth/authSlice.js';
+import {
+  PROFILE_PHOTO_ACCEPT,
+  getProfilePhotoUrl,
+  validateProfilePhotoFile,
+} from '../utils/profilePhoto.js';
 
 const getRoleLabel = (role) =>
   String(role || '')
@@ -20,6 +27,9 @@ const getRoleLabel = (role) =>
     .join(' ');
 
 const SuperAdminSettingsPage = () => {
+  const dispatch = useDispatch();
+  const { role, user: currentUser } = useSelector((state) => state.auth);
+  const isAnalystSettings = role === 'data_analyst';
   const [users, setUsers] = useState([]);
   const [teams, setTeams] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -32,6 +42,15 @@ const SuperAdminSettingsPage = () => {
   const [editingUser, setEditingUser] = useState(null);
   const [isEditSubmitting, setIsEditSubmitting] = useState(false);
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [isProfilePreviewOpen, setIsProfilePreviewOpen] = useState(false);
+  const [profilePhotoFile, setProfilePhotoFile] = useState(null);
+  const [profilePreview, setProfilePreview] = useState('');
+  const [isProfileSubmitting, setIsProfileSubmitting] = useState(false);
+  const fileInputRef = useRef(null);
+
+  useEffect(() => {
+    setProfilePreview(currentUser?.profilePhoto ? getProfilePhotoUrl(currentUser.profilePhoto) : '');
+  }, [currentUser?.profilePhoto]);
 
   const loadSettingsData = async () => {
     setIsLoading(true);
@@ -204,14 +223,72 @@ const SuperAdminSettingsPage = () => {
     }
   };
 
+  const handleOwnProfilePhotoChange = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    const validationMessage = validateProfilePhotoFile(file);
+    if (validationMessage) {
+      setBanner(validationMessage);
+      setProfilePhotoFile(null);
+      event.target.value = '';
+      return;
+    }
+
+    setBanner('');
+    setProfilePhotoFile(file);
+    setProfilePreview(URL.createObjectURL(file));
+  };
+
+  const handleOwnProfileSubmit = async (event) => {
+    event.preventDefault();
+
+    if (!currentUser?._id) {
+      setBanner('Could not identify your account.');
+      return;
+    }
+
+    if (!profilePhotoFile) {
+      setBanner('Choose a profile photo first.');
+      return;
+    }
+
+    setIsProfileSubmitting(true);
+    setBanner('');
+
+    try {
+      const submitData = new FormData();
+      submitData.append('profilePhoto', profilePhotoFile);
+      await updateDashboardUser(currentUser._id, submitData);
+      await dispatch(fetchMe()).unwrap();
+      setProfilePhotoFile(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+      setBanner('Your profile photo was updated successfully.');
+    } catch (updateError) {
+      setBanner(updateError.response?.data?.message || 'Failed to update your profile photo');
+    } finally {
+      setIsProfileSubmitting(false);
+    }
+  };
+
   return (
     <div className="space-y-6 py-6">
       <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Settings</p>
-            <h1 className="mt-2 text-3xl font-bold tracking-tight text-slate-900">System User Settings</h1>
-            <p className="mt-1 text-sm text-slate-500">View and manage all users, including Team Leads, agents, and other CRM roles, from one place.</p>
+            <h1 className="mt-2 text-3xl font-bold tracking-tight text-slate-900">
+              {isAnalystSettings ? 'Analyst Settings' : 'System User Settings'}
+            </h1>
+            <p className="mt-1 text-sm text-slate-500">
+              {isAnalystSettings
+                ? 'Update your profile and manage Team Leads and agents from one workspace.'
+                : 'View and manage all users, including Team Leads, agents, and other CRM roles, from one place.'}
+            </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <div className="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-600">
@@ -229,6 +306,74 @@ const SuperAdminSettingsPage = () => {
           </div>
         </div>
       </section>
+
+      {isAnalystSettings && (
+        <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">My Profile</p>
+              <h2 className="mt-2 text-2xl font-bold text-slate-900">Update Profile Photo</h2>
+              <p className="mt-1 text-sm text-slate-500">Keep your analyst profile picture current for the workspace header and settings tables.</p>
+            </div>
+            <div className="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-600">
+              {currentUser?.email || 'No email available'}
+            </div>
+          </div>
+
+          <form onSubmit={handleOwnProfileSubmit} className="mt-6 grid gap-6 xl:grid-cols-[240px,minmax(0,720px)] xl:justify-center xl:items-stretch">
+            <div className="flex h-full flex-col items-center justify-center gap-4 rounded-[1.5rem] border border-slate-200 bg-slate-50 p-6 text-center">
+              <button
+                type="button"
+                onClick={() => profilePreview && setIsProfilePreviewOpen(true)}
+                disabled={!profilePreview}
+                className={`overflow-hidden rounded-full ${profilePreview ? 'cursor-zoom-in' : 'cursor-default'}`}
+                title={profilePreview ? 'Preview current profile photo' : 'No profile photo uploaded'}
+              >
+                <UserAvatar
+                  src={currentUser?.profilePhoto}
+                  alt={currentUser?.fullName || 'Analyst avatar'}
+                  className="h-28 w-28 rounded-full border border-slate-200 object-cover shadow-sm"
+                />
+              </button>
+              <div className="text-center">
+                <p className="font-semibold text-slate-900">{currentUser?.fullName || 'Data Analyst User'}</p>
+                <p className="text-sm text-slate-500">Click the photo to preview it.</p>
+              </div>
+            </div>
+
+            <div className="flex h-full flex-col justify-center rounded-[1.5rem] border border-slate-200 bg-white p-6">
+              <div className="flex flex-col gap-5">
+                <label className="flex min-w-0 flex-col gap-2 text-sm text-slate-700">
+                  <span className="font-medium">Choose New Photo</span>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept={PROFILE_PHOTO_ACCEPT}
+                    onChange={handleOwnProfilePhotoChange}
+                    className="block w-full text-sm text-slate-500 file:mr-4 file:rounded-full file:border-0 file:bg-indigo-50 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-indigo-700 hover:file:bg-indigo-100"
+                  />
+                </label>
+
+                <div className="flex justify-start xl:justify-end">
+                  <button
+                    type="submit"
+                    disabled={isProfileSubmitting}
+                    className="w-full rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+                  >
+                    {isProfileSubmitting ? 'Updating...' : 'Update Photo'}
+                  </button>
+                </div>
+              </div>
+
+              {profilePhotoFile && (
+                <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                  Selected file: <span className="font-semibold text-slate-900">{profilePhotoFile.name}</span>
+                </div>
+              )}
+            </div>
+          </form>
+        </section>
+      )}
 
       {showCreateForm && (
         <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
@@ -354,6 +499,38 @@ const SuperAdminSettingsPage = () => {
         onClose={handleCloseEditModal}
         onSubmit={handleSaveProfile}
       />
+
+      {isAnalystSettings && isProfilePreviewOpen && profilePreview && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 px-4 py-8"
+          onClick={() => setIsProfilePreviewOpen(false)}
+        >
+          <div
+            className="relative w-full max-w-4xl rounded-[2rem] bg-white p-4 shadow-2xl sm:p-6"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => setIsProfilePreviewOpen(false)}
+              className="absolute right-4 top-4 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+            >
+              Close
+            </button>
+            <div className="mb-4 pr-20">
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Profile Preview</p>
+              <h2 className="mt-2 text-2xl font-bold text-slate-900">{currentUser?.fullName || 'Data Analyst User'}</h2>
+              <p className="mt-1 text-sm text-slate-500">{currentUser?.email || ''}</p>
+            </div>
+            <div className="overflow-hidden rounded-[1.5rem] bg-slate-100">
+              <img
+                src={profilePreview}
+                alt={currentUser?.fullName || 'Profile photo preview'}
+                className="max-h-[75vh] w-full object-contain"
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

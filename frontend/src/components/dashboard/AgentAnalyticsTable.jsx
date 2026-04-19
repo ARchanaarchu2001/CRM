@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { formatLastActivity, formatMetricValue, isLastActivityStale } from '../../utils/dashboard.js';
+import { getProfilePhotoUrl } from '../../utils/profilePhoto.js';
 
 const AgentAnalyticsTable = ({
   rows = [],
@@ -34,7 +35,7 @@ const AgentAnalyticsTable = ({
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
         <div>
           <h3 className="text-lg font-semibold text-slate-900">Agent Performance</h3>
-          <p className="mt-1 text-sm text-slate-500">All values in this table follow the selected date filter.</p>
+          <p className="mt-1 text-sm text-slate-500">Assigned, dials, and pending leads in this table follow the selected date filter.</p>
         </div>
         <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-end">
           <label className="flex w-full min-w-0 flex-col gap-1 text-sm text-slate-600 sm:min-w-[260px]">
@@ -67,7 +68,7 @@ const AgentAnalyticsTable = ({
               <div className="flex items-center gap-3 min-w-0">
                 {row.profilePhoto ? (
                   <img
-                    src={`/uploads/${row.profilePhoto}`}
+                    src={getProfilePhotoUrl(row.profilePhoto)}
                     alt={row.agentName}
                     className="h-11 w-11 rounded-full border border-slate-200 object-cover"
                   />
@@ -189,7 +190,7 @@ const AgentAnalyticsTable = ({
                   <div className="flex items-center gap-3">
                     {row.profilePhoto ? (
                       <img
-                        src={`/uploads/${row.profilePhoto}`}
+                        src={getProfilePhotoUrl(row.profilePhoto)}
                         alt={row.agentName}
                         className="h-10 w-10 rounded-full border border-slate-200 object-cover"
                       />

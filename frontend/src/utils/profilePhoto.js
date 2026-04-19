@@ -44,3 +44,30 @@ export const validateProfilePhotoFile = (file) => {
 
   return '';
 };
+
+const getApiOrigin = () => {
+  const apiUrl = String(import.meta.env.VITE_API_URL || '').trim();
+  if (!apiUrl) {
+    return '';
+  }
+
+  if (/^https?:\/\//i.test(apiUrl)) {
+    return apiUrl.replace(/\/api\/?$/i, '').replace(/\/$/, '');
+  }
+
+  return '';
+};
+
+export const getProfilePhotoUrl = (fileName = '') => {
+  const normalized = String(fileName || '').trim();
+  if (!normalized) {
+    return '';
+  }
+
+  if (/^https?:\/\//i.test(normalized)) {
+    return normalized;
+  }
+
+  const baseOrigin = getApiOrigin();
+  return `${baseOrigin}/uploads/${normalized}`;
+};

@@ -4,7 +4,7 @@ import { createUserByAdmin, resetState } from '../../features/users/userManageme
 import { fetchTeams } from '../../api/dashboard.js';
 import { PROFILE_PHOTO_ACCEPT, validateProfilePhotoFile } from '../../utils/profilePhoto.js';
 
-const ROLES = [
+const AVAILABLE_ROLES = [
   { value: 'data_analyst', label: 'Data Analyst' },
   { value: 'team_lead', label: 'Team Lead' },
   { value: 'manager', label: 'Manager' },
@@ -17,6 +17,7 @@ const CreateUserForm = () => {
   const { isLoading, isError, isSuccess, message } = useSelector(
     (state) => state.userManagement || {}
   );
+  const currentRole = useSelector((state) => state.auth?.role || '');
 
   const [formData, setFormData] = useState({
     fullName: '',
@@ -35,6 +36,9 @@ const CreateUserForm = () => {
   const [teamError, setTeamError] = useState('');
   const [photoError, setPhotoError] = useState('');
   const photoInputRef = useRef(null);
+  const roleOptions = currentRole === 'data_analyst'
+    ? AVAILABLE_ROLES.filter((role) => ['team_lead', 'agent'].includes(role.value))
+    : AVAILABLE_ROLES;
 
   useEffect(() => {
     if (isSuccess) {
@@ -244,7 +248,7 @@ const CreateUserForm = () => {
               className="rounded-lg border border-slate-300 p-2.5 text-sm bg-white focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
             >
               <option value="" disabled>Select User Role</option>
-              {ROLES.map((r) => (
+              {roleOptions.map((r) => (
                 <option key={r.value} value={r.value}>{r.label}</option>
               ))}
             </select>
