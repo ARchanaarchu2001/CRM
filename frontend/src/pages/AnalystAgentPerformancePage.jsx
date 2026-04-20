@@ -1,8 +1,9 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AgentAnalyticsTable from '../components/dashboard/AgentAnalyticsTable.jsx';
 import DateFilterBar from '../components/dashboard/DateFilterBar.jsx';
 import { fetchAnalystPerformanceOverview } from '../api/leads.js';
+import { socket } from '../utils/socketClient.js';
 import { buildDashboardParams, getDefaultDashboardFilter, getFilterBadgeLabel } from '../utils/dashboard.js';
 
 const AnalystAgentPerformancePage = () => {
@@ -16,23 +17,37 @@ const AnalystAgentPerformancePage = () => {
 
   const dashboardParams = useMemo(() => buildDashboardParams(filter), [filter]);
 
-  useEffect(() => {
-    const loadOverview = async () => {
-      setIsLoading(true);
-      setError('');
+  const loadOverview = useCallback(async () => {
+    setIsLoading(true);
+    setError('');
 
-      try {
-        const response = await fetchAnalystPerformanceOverview(dashboardParams);
-        setOverview(response.dashboard);
-      } catch (loadError) {
-        setError(loadError.response?.data?.message || 'Failed to load analyst agent performance');
-      } finally {
-        setIsLoading(false);
-      }
+    try {
+      const response = await fetchAnalystPerformanceOverview(dashboardParams);
+      setOverview(response.dashboard);
+    } catch (loadError) {
+      setError(loadError.response?.data?.message || 'Failed to load analyst agent performance');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [dashboardParams]);
+
+  useEffect(() => {
+    loadOverview();
+  }, [loadOverview]);
+
+  useEffect(() => {
+    const refreshOverview = () => {
+      loadOverview();
     };
 
-    loadOverview();
-  }, [filter.range, filter.from, filter.to]);
+    socket.on('assignmentCreated', refreshOverview);
+    socket.on('assignmentRemoved', refreshOverview);
+
+    return () => {
+      socket.off('assignmentCreated', refreshOverview);
+      socket.off('assignmentRemoved', refreshOverview);
+    };
+  }, [loadOverview]);
 
   const teamOptions = useMemo(() => {
     const rows = overview?.agentTable || [];

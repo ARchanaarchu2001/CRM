@@ -3,6 +3,7 @@ import {
   assignLeadsToAgent,
   deleteAnalystBatch,
   deleteSavedReport,
+  exportAnalystLeads,
   exportAdvancedReportDetail,
   getAnalystBatches,
   getAnalystLeadSelection,
@@ -37,32 +38,33 @@ const router = express.Router();
 
 router.use(protect);
 
-router.get('/metadata', authorizeRoles(ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN), getLeadMetadata);
+router.get('/metadata', authorizeRoles(ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN, ROLES.MANAGER), getLeadMetadata);
 router.get('/analyst/batches', authorizeRoles(ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN), getAnalystBatches);
 router.get('/analyst/overview', authorizeRoles(ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN), getAnalystPerformanceOverview);
-router.get('/analyst/reports', authorizeRoles(ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN), getAdvancedReportData);
-router.get('/analyst/reports/export', authorizeRoles(ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN), exportAdvancedReportDetail);
+router.get('/analyst/reports', authorizeRoles(ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN, ROLES.MANAGER), getAdvancedReportData);
+router.get('/analyst/reports/export', authorizeRoles(ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN, ROLES.MANAGER), exportAdvancedReportDetail);
+router.get('/analyst/export', authorizeRoles(ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN), exportAnalystLeads);
 router.get('/analyst/selection', authorizeRoles(ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN), getAnalystLeadSelection);
 router.get('/analyst', authorizeRoles(ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN), getAnalystLeads);
-router.get('/reports/saved', authorizeRoles(ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN), getSavedReports);
+router.get('/reports/saved', authorizeRoles(ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN, ROLES.MANAGER), getSavedReports);
 router.get(
   '/team-view/agents/:agentId/dashboard',
-  authorizeRoles(ROLES.TEAM_LEAD, ROLES.SUPER_ADMIN, ROLES.DATA_ANALYST),
+  authorizeRoles(ROLES.TEAM_LEAD, ROLES.SUPER_ADMIN, ROLES.DATA_ANALYST, ROLES.MANAGER),
   getManagedAgentDashboardView
 );
 router.get(
   '/team-view/agents/:agentId/pipeline',
-  authorizeRoles(ROLES.TEAM_LEAD, ROLES.SUPER_ADMIN, ROLES.DATA_ANALYST),
+  authorizeRoles(ROLES.TEAM_LEAD, ROLES.SUPER_ADMIN, ROLES.DATA_ANALYST, ROLES.MANAGER),
   getManagedAgentPipelineView
 );
 router.get(
   '/team-view/agents/:agentId/queue',
-  authorizeRoles(ROLES.TEAM_LEAD, ROLES.SUPER_ADMIN, ROLES.DATA_ANALYST),
+  authorizeRoles(ROLES.TEAM_LEAD, ROLES.SUPER_ADMIN, ROLES.DATA_ANALYST, ROLES.MANAGER),
   getManagedAgentQueueView
 );
 router.get(
   '/team-view/agents/:agentId/batches/:batchId',
-  authorizeRoles(ROLES.TEAM_LEAD, ROLES.SUPER_ADMIN, ROLES.DATA_ANALYST),
+  authorizeRoles(ROLES.TEAM_LEAD, ROLES.SUPER_ADMIN, ROLES.DATA_ANALYST, ROLES.MANAGER),
   getManagedAgentBatchView
 );
 router.get(
@@ -94,7 +96,7 @@ router.post(
 );
 router.post(
   '/reports/saved',
-  authorizeRoles(ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN),
+  authorizeRoles(ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN, ROLES.MANAGER),
   saveReport
 );
 router.delete(
@@ -104,7 +106,7 @@ router.delete(
 );
 router.delete(
   '/reports/saved/:id',
-  authorizeRoles(ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN),
+  authorizeRoles(ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN, ROLES.MANAGER),
   deleteSavedReport
 );
 router.put(

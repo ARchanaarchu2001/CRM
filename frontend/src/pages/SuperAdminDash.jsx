@@ -72,6 +72,10 @@ const SuperAdminDash = () => {
     });
   };
 
+  const handleOpenAgentDashboard = (agentRow) => {
+    navigate(`/team-lead/agents/${agentRow.agentId}/dashboard`);
+  };
+
   const teamOptions = useMemo(() => {
     const rows = dashboard?.agentTable || [];
     const seen = new Set();
@@ -268,6 +272,7 @@ const SuperAdminDash = () => {
           <AgentAnalyticsTable
             rows={scopedAgentRows}
             onViewDetails={handleViewDetails}
+            onOpenAgentDashboard={handleOpenAgentDashboard}
             showTeam
           />
         </>

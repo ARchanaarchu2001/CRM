@@ -122,6 +122,14 @@ const normalizeAssignmentAgentName = (assignment) => ({
   assignedAgentName: assignment.assignedAgentName || assignment.agent?.fullName || '',
 });
 
+const escapeCsvValue = (value) => {
+  const stringValue = String(value ?? '');
+  if (/[",\n]/.test(stringValue)) {
+    return `"${stringValue.replace(/"/g, '""')}"`;
+  }
+  return stringValue;
+};
+
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
@@ -344,7 +352,7 @@ const getViewableAgentForLead = async (requester, agentId) => {
     return null;
   }
 
-  if ([ROLES.SUPER_ADMIN, ROLES.DATA_ANALYST].includes(requester.role)) {
+  if ([ROLES.SUPER_ADMIN, ROLES.DATA_ANALYST, ROLES.MANAGER].includes(requester.role)) {
     return agent;
   }
 
@@ -922,7 +930,32 @@ export const exportAnalystLeads = asyncHandler(async (req, res) => {
   });
 
   const leads = await Lead.find(filters).sort({ createdAt: -1 }).lean();
-  const filteredLeads = search ? leads.filter((lead) => leadMatchesSearch(lead, search)) : leads;
+  const leadIds = leads.map((lead) => lead._id);
+  const assignments = leadIds.length
+    ? await LeadAssignment.find({ lead: { $in: leadIds } })
+      .populate('agent', 'fullName')
+      .sort({ updatedAt: -1, createdAt: -1 })
+      .lean()
+      .then((rows) => rows.map(normalizeAssignmentAgentName))
+    : [];
+  const assignmentsByLeadId = assignments.reduce((accumulator, assignment) => {
+    const key = String(assignment.lead);
+    if (!accumulator[key]) {
+      accumulator[key] = [];
+    }
+    accumulator[key].push(assignment);
+    return accumulator;
+  }, {});
+  const filteredLeads = search
+    ? leads.filter((lead) => {
+      if (leadMatchesSearch(lead, search)) {
+        return true;
+      }
+
+      const leadAssignments = assignmentsByLeadId[String(lead._id)] || [];
+      return leadAssignments.some((assignment) => assignmentMatchesSearch(assignment, search));
+    })
+    : leads;
 
   const importMeta = importBatchId
     ? await LeadImport.findById(importBatchId).select('headers contactColumn batchName').lean()
@@ -954,11 +987,6 @@ export const exportAnalystLeads = asyncHandler(async (req, res) => {
   res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
 
   if (assignmentStatus === 'assigned') {
-    const leadIds = filteredLeads.map((lead) => lead._id);
-    const assignments = await LeadAssignment.find({ lead: { $in: leadIds } })
-      .sort({ createdAt: -1 })
-      .lean();
-
     const leadMap = new Map(filteredLeads.map((lead) => [String(lead._id), lead]));
     const productSet = [...new Set(filteredLeads.map((lead) => String(lead.product || 'general').toLowerCase()))];
     const remarkConfigs = productSet.length
@@ -984,25 +1012,28 @@ export const exportAnalystLeads = asyncHandler(async (req, res) => {
 
     const headers = [
       detectedContactHeader,
+      'Assigned Agent',
       ...orderedRawHeaders,
-      'AssignedAgent',
       'Status',
-      'ContactabilityStatus',
+      'Contactability Status',
       ...labelOrder,
-      'AgentNotes',
+      'Agent Notes',
     ];
 
     res.write(headers.map(escapeCsvValue).join(',') + '\n');
 
     for (const assignment of assignments) {
-      const lead = leadMap.get(String(assignment.lead)) || {};
+      const lead = leadMap.get(String(assignment.lead));
+      if (!lead) {
+        continue;
+      }
       const rawData = lead.rawData || {};
       const contactValue = rawData[detectedContactHeader] || lead.contactNumber || '';
 
       const row = [
         contactValue,
-        ...orderedRawHeaders.map((header) => rawData[header] || ''),
         assignment.assignedAgentName || '',
+        ...orderedRawHeaders.map((header) => rawData[header] || ''),
         assignment.status || '',
         assignment.contactabilityStatus || '',
         ...labelOrder.map((label) => assignment[labelToField[label]] || ''),
@@ -1984,7 +2015,7 @@ export const getAnalystPerformanceOverview = asyncHandler(async (req, res) => {
 });
 
 export const getManagedAgentDashboardView = asyncHandler(async (req, res) => {
-  if (![ROLES.TEAM_LEAD, ROLES.SUPER_ADMIN, ROLES.DATA_ANALYST].includes(req.user.role)) {
+  if (![ROLES.TEAM_LEAD, ROLES.SUPER_ADMIN, ROLES.DATA_ANALYST, ROLES.MANAGER].includes(req.user.role)) {
     res.status(403);
     throw new Error('Forbidden');
   }
@@ -2141,7 +2172,7 @@ export const getManagedAgentDashboardView = asyncHandler(async (req, res) => {
 });
 
 export const getManagedAgentPipelineView = asyncHandler(async (req, res) => {
-  if (![ROLES.TEAM_LEAD, ROLES.SUPER_ADMIN, ROLES.DATA_ANALYST].includes(req.user.role)) {
+  if (![ROLES.TEAM_LEAD, ROLES.SUPER_ADMIN, ROLES.DATA_ANALYST, ROLES.MANAGER].includes(req.user.role)) {
     res.status(403);
     throw new Error('Forbidden');
   }
@@ -2182,7 +2213,7 @@ export const getManagedAgentPipelineView = asyncHandler(async (req, res) => {
 });
 
 export const getManagedAgentQueueView = asyncHandler(async (req, res) => {
-  if (![ROLES.TEAM_LEAD, ROLES.SUPER_ADMIN, ROLES.DATA_ANALYST].includes(req.user.role)) {
+  if (![ROLES.TEAM_LEAD, ROLES.SUPER_ADMIN, ROLES.DATA_ANALYST, ROLES.MANAGER].includes(req.user.role)) {
     res.status(403);
     throw new Error('Forbidden');
   }
@@ -2220,7 +2251,7 @@ export const getManagedAgentQueueView = asyncHandler(async (req, res) => {
 });
 
 export const getManagedAgentBatchView = asyncHandler(async (req, res) => {
-  if (![ROLES.TEAM_LEAD, ROLES.SUPER_ADMIN, ROLES.DATA_ANALYST].includes(req.user.role)) {
+  if (![ROLES.TEAM_LEAD, ROLES.SUPER_ADMIN, ROLES.DATA_ANALYST, ROLES.MANAGER].includes(req.user.role)) {
     res.status(403);
     throw new Error('Forbidden');
   }
@@ -2333,7 +2364,7 @@ export const getManagedAgentBatchView = asyncHandler(async (req, res) => {
 });
 
 export const getAdvancedReportData = asyncHandler(async (req, res) => {
-  if (![ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN].includes(req.user.role)) {
+  if (![ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN, ROLES.MANAGER].includes(req.user.role)) {
     res.status(403);
     throw new Error('Forbidden');
   }
@@ -2372,7 +2403,7 @@ export const getAdvancedReportData = asyncHandler(async (req, res) => {
 });
 
 export const exportAdvancedReportDetail = asyncHandler(async (req, res) => {
-  if (![ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN].includes(req.user.role)) {
+  if (![ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN, ROLES.MANAGER].includes(req.user.role)) {
     res.status(403);
     throw new Error('Forbidden');
   }
@@ -2427,7 +2458,7 @@ export const exportAdvancedReportDetail = asyncHandler(async (req, res) => {
 });
 
 export const saveReport = asyncHandler(async (req, res) => {
-  if (![ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN].includes(req.user.role)) {
+  if (![ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN, ROLES.MANAGER].includes(req.user.role)) {
     res.status(403);
     throw new Error('Forbidden');
   }
@@ -2460,7 +2491,7 @@ export const saveReport = asyncHandler(async (req, res) => {
 });
 
 export const getSavedReports = asyncHandler(async (req, res) => {
-  if (![ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN].includes(req.user.role)) {
+  if (![ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN, ROLES.MANAGER].includes(req.user.role)) {
     res.status(403);
     throw new Error('Forbidden');
   }
@@ -2476,7 +2507,7 @@ export const getSavedReports = asyncHandler(async (req, res) => {
 });
 
 export const deleteSavedReport = asyncHandler(async (req, res) => {
-  if (![ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN].includes(req.user.role)) {
+  if (![ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN, ROLES.MANAGER].includes(req.user.role)) {
     res.status(403);
     throw new Error('Forbidden');
   }

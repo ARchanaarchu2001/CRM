@@ -146,8 +146,8 @@ const firstName = getDisplayName();
 
     { to: '/analyst-dash', label: 'Analyst Workspace', show: false },
     { to: '/analyst-overview', label: 'Analyst Overview', show: ['data_analyst'].includes(role) },
-    { to: '/analyst-reports', label: 'Advanced Reports', show: ['data_analyst', 'super_admin'].includes(role) },
-    { to: '/analyst-saved-reports', label: 'Saved Reports', show: ['data_analyst', 'super_admin'].includes(role) },
+    { to: '/analyst-reports', label: 'Advanced Reports', show: ['data_analyst', 'super_admin', 'manager'].includes(role) },
+    { to: '/analyst-saved-reports', label: 'Saved Reports', show: ['data_analyst', 'super_admin', 'manager'].includes(role) },
     { to: '/analyst-agent-performance', label: 'Agent Performance', show: ['data_analyst'].includes(role) },
     { to: '/lead-settings', label: 'Lead Settings', show: ['data_analyst'].includes(role) },
     { to: '/analyst-settings', label: 'Settings', show: ['data_analyst'].includes(role) },
@@ -155,7 +155,7 @@ const firstName = getDisplayName();
     { to: '/agent-pipeline', label: 'Pipeline', show: ['agent'].includes(role) },
     { to: '/agent-settings', label: 'Settings', show: ['agent'].includes(role) },
 
-    { to: '/team-lead-dash', label: 'Team Lead', show: ['manager'].includes(role) },
+    { to: '/team-lead-dash', label: 'Team Lead', show: false },
     { to: '/team-lead-conversion', label: 'Data Conversion', show: ['team_lead'].includes(role) },
     { to: '/team-lead-settings', label: 'Settings', show: ['team_lead'].includes(role) },
 

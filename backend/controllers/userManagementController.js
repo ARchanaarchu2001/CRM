@@ -587,7 +587,7 @@ export const getSuperAdminDashboard = asyncHandler(async (req, res) => {
 });
 
 export const getAgentPerformanceDetail = asyncHandler(async (req, res) => {
-  if (![ROLES.TEAM_LEAD, ROLES.SUPER_ADMIN, ROLES.DATA_ANALYST].includes(req.user.role)) {
+  if (![ROLES.TEAM_LEAD, ROLES.SUPER_ADMIN, ROLES.DATA_ANALYST, ROLES.MANAGER].includes(req.user.role)) {
     return res.status(403).json({ success: false, message: 'Forbidden' });
   }
 

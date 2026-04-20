@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   assignLeads,
+  downloadAnalystLeadExport,
   fetchAnalystLeadSelection,
   fetchAnalystLeads,
   fetchLeadMetadata,
@@ -129,6 +130,7 @@ const AnalystDatasetPage = () => {
   const [copiedContact, setCopiedContact] = useState('');
   const [isAssigning, setIsAssigning] = useState(false);
   const [isUnassigning, setIsUnassigning] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const [isSelectionProcessing, setIsSelectionProcessing] = useState(false);
   const [customSelectCount, setCustomSelectCount] = useState('150');
   const rowRefs = useRef({});
@@ -326,10 +328,70 @@ const AnalystDatasetPage = () => {
     const link = document.createElement('a');
     link.href = url;
     link.download = `${batchName || 'dataset'}-${leadFilters.assignmentStatus || 'full'}.csv`;
+    link.style.display = 'none';
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    window.URL.revokeObjectURL(url);
+    window.setTimeout(() => {
+      window.URL.revokeObjectURL(url);
+    }, 1000);
+  };
+
+  const handleFullAssignedExport = async () => {
+    setIsExporting(true);
+    setActionMessage('');
+
+    try {
+      const response = await downloadAnalystLeadExport({
+        importBatchId: batchId,
+        ...leadFilters,
+      });
+      const blob = response?.data instanceof Blob
+        ? response.data
+        : new Blob([response?.data ?? ''], { type: 'text/csv;charset=utf-8;' });
+
+      if (!blob || blob.size === 0) {
+        setActionMessage('No rows available to export for this view.');
+        return;
+      }
+
+      const contentDisposition = response?.headers?.['content-disposition'] || '';
+      const fileNameMatch = contentDisposition.match(/filename="?([^"]+)"?/i);
+      const downloadName =
+        fileNameMatch?.[1] || `${batchName || 'dataset'}-${leadFilters.assignmentStatus || 'full'}.csv`;
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = downloadName;
+      link.style.display = 'none';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.setTimeout(() => {
+        window.URL.revokeObjectURL(url);
+      }, 1000);
+      setActionMessage(
+        leadFilters.assignmentStatus === 'assigned'
+          ? 'Full assigned dataset exported with agent details, original row data, and remarks.'
+          : 'Full dataset exported.'
+      );
+    } catch (error) {
+      console.error('Failed to export analyst dataset', error);
+      const responseData = error.response?.data;
+      if (responseData instanceof Blob) {
+        try {
+          const errorText = await responseData.text();
+          const parsed = JSON.parse(errorText);
+          setActionMessage(parsed.message || 'Failed to export this dataset.');
+        } catch {
+          setActionMessage('Failed to export this dataset.');
+        }
+      } else {
+        setActionMessage(error.response?.data?.message || 'Failed to export this dataset.');
+      }
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   const toggleLead = (leadId, index, shiftKey) => {
@@ -686,13 +748,16 @@ const AnalystDatasetPage = () => {
             </div>
 
             <div className="mt-4 flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={handleExport}
-                className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
-              >
-                Export View
-              </button>
+              {leadFilters.assignmentStatus === 'assigned' && (
+                <button
+                  type="button"
+                  onClick={handleFullAssignedExport}
+                  disabled={isExporting}
+                  className="rounded-xl border border-indigo-300 bg-indigo-50 px-4 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isExporting ? 'Exporting...' : 'Export Full Assigned Data'}
+                </button>
+              )}
               {leadFilters.assignmentStatus !== 'assigned' &&
                 [50, 100, 200].map((count) => (
                   <button

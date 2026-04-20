@@ -67,6 +67,14 @@ export const fetchAnalystLeads = async (params) => {
   return response.data;
 };
 
+export const downloadAnalystLeadExport = async (params) => {
+  const response = await axiosPrivate.get('/leads/analyst/export', {
+    params,
+    responseType: 'blob',
+  });
+  return response;
+};
+
 export const fetchAnalystLeadSelection = async (params) => {
   const response = await axiosPrivate.get('/leads/analyst/selection', { params });
   return response.data;
