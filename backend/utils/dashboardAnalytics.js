@@ -39,6 +39,8 @@ const createTrendBucket = (date) => ({
     day: 'numeric',
   }),
   dials: 0,
+  connectCallCount: 0,
+  reachableCount: 0,
   submissions: 0,
   activations: 0,
 });
@@ -126,6 +128,8 @@ export const getDynamicKpiTitles = (rangeInfo) => {
 
   return {
     dials: `${prefix} Dials`,
+    connectCallCount: `${prefix} Connect Calls`,
+    reachableCount: `${prefix} Reachable`,
     submissions: `${prefix} Submissions`,
     activations: `${prefix} Activations`,
     pipelineCount: 'Active Pipeline Count',
@@ -300,6 +304,8 @@ const buildAgentBase = (agent) => ({
   teamLeadName: agent.teamLead?.fullName || agent.team?.lead?.fullName || 'Unassigned Team',
   totalAssignedLeads: 0,
   dials: 0,
+  connectCallCount: 0,
+  reachableCount: 0,
   submissions: 0,
   activations: 0,
   pipelineCount: 0,
@@ -344,6 +350,8 @@ export const buildDashboardAnalytics = ({ agents, assignments, rangeInfo, includ
   const kpiTitles = getDynamicKpiTitles(rangeInfo);
   const summary = {
     dials: 0,
+    connectCallCount: 0,
+    reachableCount: 0,
     submissions: 0,
     activations: 0,
     pipelineCount: 0,
@@ -398,6 +406,42 @@ export const buildDashboardAnalytics = ({ agents, assignments, rangeInfo, includ
       agentMetrics.dials += 1;
       if (globalProductBucket) globalProductBucket.dials += 1;
       if (agentProductBucket) agentProductBucket.dials += 1;
+    }
+
+    // Count connect calls (assignments with call attempt dates within range)
+    const hasCallAttempt1 = assignment.callAttempt1Date && isDateWithinRange(assignment.callAttempt1Date, rangeInfo);
+    const hasCallAttempt2 = assignment.callAttempt2Date && isDateWithinRange(assignment.callAttempt2Date, rangeInfo);
+    const hasConnectCall = hasCallAttempt1 || hasCallAttempt2;
+    
+    if (hasConnectCall) {
+      summary.connectCallCount += 1;
+      agentMetrics.connectCallCount += 1;
+
+      const connectDateKey = getDateKeyWithinRange(
+        hasCallAttempt1 ? assignment.callAttempt1Date : assignment.callAttempt2Date,
+        rangeInfo
+      );
+      const dayBucket = trendMap.get(connectDateKey);
+      if (dayBucket) {
+        dayBucket.connectCallCount += 1;
+      }
+    }
+
+    // Count reachable leads (contactabilityStatus = 'Reachable' within range)
+    const isReachable = assignment.contactabilityStatus === 'Reachable';
+    const reachableInRange = isReachable && (
+      assignment.updatedAt && isDateWithinRange(assignment.updatedAt, rangeInfo)
+    );
+    
+    if (reachableInRange) {
+      summary.reachableCount += 1;
+      agentMetrics.reachableCount += 1;
+
+      const reachableDateKey = getDateKeyWithinRange(assignment.updatedAt, rangeInfo);
+      const dayBucket = trendMap.get(reachableDateKey);
+      if (dayBucket) {
+        dayBucket.reachableCount += 1;
+      }
     }
 
     const submissionDate = getSubmissionDate(assignment);
@@ -511,6 +555,8 @@ export const buildDashboardAnalytics = ({ agents, assignments, rangeInfo, includ
 
   const kpis = [
     { key: 'dials', title: kpiTitles.dials, value: summary.dials },
+    { key: 'connectCallCount', title: kpiTitles.connectCallCount, value: summary.connectCallCount },
+    { key: 'reachableCount', title: kpiTitles.reachableCount, value: summary.reachableCount },
     { key: 'submissions', title: kpiTitles.submissions, value: summary.submissions },
     { key: 'activations', title: kpiTitles.activations, value: summary.activations },
     { key: 'pipelineCount', title: kpiTitles.pipelineCount, value: summary.pipelineCount },

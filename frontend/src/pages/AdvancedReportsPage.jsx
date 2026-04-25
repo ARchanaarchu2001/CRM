@@ -187,7 +187,7 @@ const AdvancedReportsPage = () => {
         <>
           {/* Key Metrics */}
           <div className={`${isLoading ? 'opacity-50 pointer-events-none' : ''} transition-opacity`}>
-            <KpiCardGrid kpis={reportData?.kpis || []} />
+            <KpiCardGrid kpis={reportData?.kpis || []} agentData={reportData?.agentTable || []} />
           </div>
 
           <div className={`grid gap-8 lg:grid-cols-3 ${isLoading ? 'opacity-50 pointer-events-none' : ''} transition-opacity`}>
@@ -202,7 +202,7 @@ const AdvancedReportsPage = () => {
 
              {/* Distribution Mix */}
              <div className="flex flex-col gap-8">
-                <div className="flex-1 rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm ring-1 ring-slate-100 flex flex-col justify-center text-center">
+                <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm ring-1 ring-slate-100 flex flex-col justify-center text-center">
                   <p className="text-sm font-bold text-slate-500 uppercase">Avg Daily Dials</p>
                   <p className="mt-2 text-5xl font-extrabold text-indigo-600">
                     {reportData?.summary?.dials && reportData?.charts?.trend?.length > 0
@@ -212,7 +212,7 @@ const AdvancedReportsPage = () => {
                   <p className="mt-2 text-xs text-slate-400 font-medium">Per interval in scope</p>
                 </div>
 
-                <div className="flex-1 rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm ring-1 ring-slate-100 flex flex-col justify-center text-center">
+                <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm ring-1 ring-slate-100 flex flex-col justify-center text-center">
                   <p className="text-sm font-bold text-emerald-600 uppercase">Conversion Efficiency</p>
                   <p className="mt-2 text-5xl font-extrabold text-slate-900">
                     {reportData?.summary?.dials > 0
@@ -220,6 +220,19 @@ const AdvancedReportsPage = () => {
                       : '0'}%
                   </p>
                   <p className="mt-2 text-xs text-slate-400 font-medium">Submissions vs Total Dials</p>
+                </div>
+
+                <div className="grid grid-cols-3 gap-3">
+                  {[
+                    { label: 'Connected', value: reportData?.summary?.connectCallCount || 0, tone: 'text-blue-700' },
+                    { label: 'Reachable', value: reportData?.summary?.reachableCount || 0, tone: 'text-teal-700' },
+                    { label: 'Open', value: reportData?.summary?.pipelineCount || 0, tone: 'text-slate-900' },
+                  ].map((item) => (
+                    <div key={item.label} className="rounded-2xl border border-slate-200 bg-white p-4 text-center shadow-sm ring-1 ring-slate-100">
+                      <p className="text-[11px] font-bold uppercase text-slate-500">{item.label}</p>
+                      <p className={`mt-2 text-2xl font-extrabold ${item.tone}`}>{formatMetricValue(item.value)}</p>
+                    </div>
+                  ))}
                 </div>
              </div>
           </div>

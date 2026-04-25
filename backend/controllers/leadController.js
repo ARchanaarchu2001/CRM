@@ -319,7 +319,7 @@ const getAdvancedReportScope = async ({ query }) => {
 
   const assignments = await LeadAssignment.find(assignmentFilters)
     .select(
-      'agent lead product status createdAt updatedAt submittedAt activatedAt workedDates inPipeline pipelineFollowUpDate contactabilityStatus callingRemark interestedRemark notInterestedRemark agentNotes assignedAgentName'
+      'agent lead product status createdAt updatedAt submittedAt activatedAt workedDates inPipeline pipelineFollowUpDate contactabilityStatus callingRemark interestedRemark notInterestedRemark agentNotes assignedAgentName callAttempt1Date callAttempt2Date'
     )
     .populate('agent', 'fullName assignedTeam profilePhoto')
     .populate('lead')
@@ -2424,6 +2424,8 @@ export const exportAdvancedReportDetail = asyncHandler(async (req, res) => {
   const trendRows = (analytics.charts?.trend || []).map((row) => ({
     Date: row.label,
     Dials: row.dials,
+    ConnectCalls: row.connectCallCount || 0,
+    Reachable: row.reachableCount || 0,
     Submissions: row.submissions,
     Activations: row.activations,
   }));
@@ -2432,12 +2434,15 @@ export const exportAdvancedReportDetail = asyncHandler(async (req, res) => {
     Agent: row.agentName,
     Team: row.teamName,
     Dials: row.dials,
+    ConnectCalls: row.connectCallCount || 0,
+    Reachable: row.reachableCount || 0,
     Submissions: row.submissions,
     Activations: row.activations,
     Pipeline: row.pipelineCount,
     OverduePipeline: row.overduePipelineCount,
     PendingLeads: row.pendingLeads,
     TotalAssignedLeads: row.totalAssignedLeads,
+    LastActivity: row.lastActivity || '',
   }));
 
   const workbook = XLSX.utils.book_new();
