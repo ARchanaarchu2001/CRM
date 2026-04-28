@@ -29,7 +29,7 @@ const allowedOrigins = [
     .filter(Boolean),
 ];
 
-
+app.set('trust proxy', 1);
 // Security Middlewares
 app.use(helmet());
 
