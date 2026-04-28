@@ -1,9 +1,14 @@
 import React from 'react';
 import { Navigate } from 'react-router-dom';
 import { useSelector } from 'react-redux';
+import { DEVELOPER_DASHBOARD_PATH } from '../api/developer.js';
 
 const DashboardHome = () => {
   const { role } = useSelector((state) => state.auth);
+
+  if (role === 'developer') {
+    return <Navigate to={`/${DEVELOPER_DASHBOARD_PATH}`} replace />;
+  }
 
   if (role === 'super_admin') {
     return <Navigate to="/admin-dash" replace />;

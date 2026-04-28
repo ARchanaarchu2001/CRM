@@ -14,7 +14,7 @@ const DetailedInteractionLog = ({ data = [], isLoading = false }) => {
       <div className="p-6 border-b border-slate-100 flex items-center justify-between">
         <div>
           <h3 className="text-lg font-bold text-slate-900 tracking-tight">Detailed Interaction Log</h3>
-          <p className="mt-1 text-sm text-slate-500">Showing the 50 most recent agent interactions for selected filters.</p>
+          <p className="mt-1 text-sm text-slate-500">Showing the most recent in-scope agent interactions for selected filters.</p>
         </div>
         <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">
           {data.length} entries
@@ -35,27 +35,32 @@ const DetailedInteractionLog = ({ data = [], isLoading = false }) => {
           </thead>
           <tbody className="divide-y divide-slate-100">
             {data.map((log) => {
-              const rawData = log.lead?.rawData || {};
+              const rawData = log.rawData || log.lead?.rawData || {};
               const companyName = rawData.Company || rawData.company || rawData['Company Name'] || rawData['COMPANY'] || '-';
-              const customerName = rawData.Name || rawData.name || rawData['Customer Name'] || '-';
+              const customerName = log.leadName || rawData.Name || rawData.name || rawData['Customer Name'] || '-';
+              const rowDate = log.updatedAt || log.date || log.createdAt;
+              const agentName = log.agentName || log.agent?.fullName || 'Unassigned Agent';
+              const teamName = log.teamName || log.agent?.assignedTeam || 'Unassigned';
+              const contactNumber = log.leadContactNumber || log.lead?.contactNumber || '';
 
               return (
                 <tr key={log._id} className="group hover:bg-slate-50/50 transition-colors">
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm font-medium text-slate-900">
-                      {new Date(log.createdAt).toLocaleDateString()}
+                      {rowDate ? new Date(rowDate).toLocaleDateString() : '-'}
                     </div>
                     <div className="text-xs text-slate-400">
-                      {new Date(log.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      {rowDate ? new Date(rowDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm font-bold text-slate-700">{log.agent?.fullName}</div>
-                    <div className="text-xs text-slate-400 uppercase font-medium">{log.agent?.assignedTeam || 'Unassigned'}</div>
+                    <div className="text-sm font-bold text-slate-700">{agentName}</div>
+                    <div className="text-xs text-slate-400 uppercase font-medium">{teamName}</div>
                   </td>
                   <td className="px-6 py-4">
                     <div className="text-sm font-bold text-slate-900">{customerName}</div>
-                    <div className="text-xs text-indigo-600 font-medium">{log.lead?.contactNumber}</div>
+                    <div className="text-xs text-indigo-600 font-medium">{contactNumber}</div>
+                    <div className="mt-1 text-[10px] font-bold uppercase text-slate-400">{log.batchName} {log.product ? `- ${String(log.product).toUpperCase()}` : ''}</div>
                   </td>
                   <td className="px-6 py-4">
                     <div className="text-sm text-slate-600 font-medium">{companyName}</div>

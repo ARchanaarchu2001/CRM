@@ -373,6 +373,7 @@ export const buildDashboardAnalytics = ({ agents, assignments, rangeInfo, includ
     agents.map((agent) => [String(agent._id), buildProductMetricTemplate()])
   );
   const teamComparison = new Map();
+  const datasetMap = new Map();
 
   for (const assignment of assignments) {
     const agentId = String(assignment.agent?._id || assignment.agent);
@@ -392,7 +393,7 @@ export const buildDashboardAnalytics = ({ agents, assignments, rangeInfo, includ
     }
 
     for (const workedDate of workedDateHits) {
-      const dayKey = formatDateKey(parseDateInput(workedDate));
+      const dayKey = getDateKeyWithinRange(workedDate, rangeInfo) || workedDate;
       const dayBucket = trendMap.get(dayKey);
       if (dayBucket) {
         dayBucket.dials += 1;
@@ -488,6 +489,26 @@ export const buildDashboardAnalytics = ({ agents, assignments, rangeInfo, includ
       updateLastActivity(agentMetrics, assignment.updatedAt || assignment.pipelineFollowUpDate);
     }
 
+    // Dataset aggregation
+    const batchId = assignment.importBatch ? String(assignment.importBatch) : 'unassigned';
+    if (!datasetMap.has(batchId)) {
+      datasetMap.set(batchId, {
+        batchId,
+        batchName: assignment.batchName || 'Unassigned Batch',
+        product: assignment.product || 'general',
+        totalAssignedLeads: 0,
+        dials: 0,
+        submissions: 0,
+        activations: 0,
+        pendingLeads: 0,
+      });
+    }
+    
+    const datasetRow = datasetMap.get(batchId);
+    if (assignedInRange) datasetRow.totalAssignedLeads += 1;
+    if (dialedInRange) datasetRow.dials += 1;
+    if (submissionDateKey) datasetRow.submissions += 1;
+    if (activationDateKey) datasetRow.activations += 1;
   }
 
   for (const agentMetrics of agentMap.values()) {
@@ -521,6 +542,15 @@ export const buildDashboardAnalytics = ({ agents, assignments, rangeInfo, includ
   }
 
   const agentTable = Array.from(agentMap.values()).sort((left, right) => {
+    if (right.activations !== left.activations) return right.activations - left.activations;
+    if (right.submissions !== left.submissions) return right.submissions - left.submissions;
+    return right.dials - left.dials;
+  });
+
+  const datasetTable = Array.from(datasetMap.values()).map(dataset => {
+    dataset.pendingLeads = Math.max((dataset.totalAssignedLeads || 0) - (dataset.dials || 0), 0);
+    return dataset;
+  }).sort((left, right) => {
     if (right.activations !== left.activations) return right.activations - left.activations;
     if (right.submissions !== left.submissions) return right.submissions - left.submissions;
     return right.dials - left.dials;
@@ -573,6 +603,7 @@ export const buildDashboardAnalytics = ({ agents, assignments, rangeInfo, includ
     kpis,
     summary,
     agentTable,
+    datasetTable,
     charts: {
       trend,
       productPerformance,

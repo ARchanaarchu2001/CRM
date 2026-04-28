@@ -11,6 +11,7 @@ export const roleHierarchy = [
   ROLES.TEAM_LEAD,
   ROLES.DATA_ANALYST,
   ROLES.SUPER_ADMIN,
+  ROLES.DEVELOPER,
 ];
 
 /**

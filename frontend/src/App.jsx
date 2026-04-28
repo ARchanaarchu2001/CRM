@@ -14,6 +14,8 @@ import AdvancedReportsPage from './pages/AdvancedReportsPage';
 import SavedReportsPage from './pages/SavedReportsPage';
 import DashboardHome from './pages/DashboardHome';
 import LeadSettingsPage from './pages/LeadSettingsPage';
+import DeveloperDashboardPage from './pages/DeveloperDashboardPage';
+import { DEVELOPER_DASHBOARD_PATH } from './api/developer.js';
 import LoginPage from './pages/LoginPage';
 import UnauthorizedPage from './pages/UnauthorizedPage';
 import NotFoundPage from './pages/NotFoundPage';
@@ -48,7 +50,11 @@ function App() {
             <Route element={<MainLayout />}>
               
               <Route path="/dashboard" element={<DashboardHome />} />
-              
+
+              <Route element={<RoleProtectedRoute allowedRoles={['developer']} />}>
+                <Route path={`/${DEVELOPER_DASHBOARD_PATH}`} element={<DeveloperDashboardPage />} />
+              </Route>
+
               <Route element={<RoleProtectedRoute allowedRoles={['super_admin', 'manager']} />}>
                 <Route path="/admin-dash" element={<SuperAdminDash />} />
                 <Route path="/admin-conversion" element={<SuperAdminConversionPage />} />

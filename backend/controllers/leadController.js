@@ -272,6 +272,145 @@ const matchesScopeTeam = (agent, teamId) => {
   return false;
 };
 
+const parseReportDateInput = (value) => {
+  if (!value) return null;
+  const asString = String(value).trim();
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(asString)) {
+    const [year, month, day] = asString.split('-').map(Number);
+    return new Date(year, month - 1, day, 0, 0, 0, 0);
+  }
+
+  const parsed = new Date(asString);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const isReportDateInRange = (value, rangeInfo) => {
+  const parsed = parseReportDateInput(value);
+  return Boolean(parsed && parsed >= rangeInfo.fromDate && parsed <= rangeInfo.toDate);
+};
+
+const hasReportInteraction = (assignment) =>
+  Boolean(
+    assignment.contactabilityStatus ||
+      assignment.callingRemark ||
+      assignment.interestedRemark ||
+      assignment.notInterestedRemark ||
+      assignment.agentNotes ||
+      assignment.callAttempt1Date ||
+      assignment.callAttempt2Date ||
+      assignment.status ||
+      assignment.inPipeline
+  );
+
+const isAssignmentInReportRange = (assignment, rangeInfo) => {
+  const workedInRange = (assignment.workedDates || []).some((dateValue) => isReportDateInRange(dateValue, rangeInfo));
+
+  return Boolean(
+    workedInRange ||
+      isReportDateInRange(assignment.callAttempt1Date, rangeInfo) ||
+      isReportDateInRange(assignment.callAttempt2Date, rangeInfo) ||
+      isReportDateInRange(assignment.submittedAt, rangeInfo) ||
+      isReportDateInRange(assignment.activatedAt, rangeInfo) ||
+      isReportDateInRange(assignment.pipelineFollowUpDate, rangeInfo) ||
+      (hasReportInteraction(assignment) && isReportDateInRange(assignment.updatedAt, rangeInfo)) ||
+      isReportDateInRange(assignment.createdAt, rangeInfo)
+  );
+};
+
+const getAssignmentReportStatus = (assignment) => {
+  if (assignment.status) return String(assignment.status);
+  if (assignment.callingRemark) return String(assignment.callingRemark);
+  if (assignment.contactabilityStatus) return String(assignment.contactabilityStatus);
+  if (assignment.inPipeline) return 'pipeline';
+  return 'new';
+};
+
+const getLeadDisplayValue = (rawData = {}, candidates = []) => {
+  for (const key of candidates) {
+    if (rawData[key]) return rawData[key];
+  }
+  return '';
+};
+
+const buildReportAssignmentDetail = (assignment) => {
+  const rawData = assignment.lead?.rawData || {};
+
+  return {
+    _id: assignment._id,
+    date: assignment.updatedAt || assignment.createdAt,
+    createdAt: assignment.createdAt,
+    updatedAt: assignment.updatedAt,
+    agentName: assignment.agent?.fullName || assignment.assignedAgentName || 'Unassigned Agent',
+    agentEmail: assignment.agent?.email || '',
+    teamName: assignment.agent?.assignedTeam || 'Unassigned Team',
+    batchName: assignment.batchName,
+    product: assignment.product,
+    status: assignment.status || '',
+    reportStatus: getAssignmentReportStatus(assignment),
+    contactabilityStatus: assignment.contactabilityStatus || '',
+    callAttempt1Date: assignment.callAttempt1Date || '',
+    callAttempt2Date: assignment.callAttempt2Date || '',
+    callingRemark: assignment.callingRemark || '',
+    interestedRemark: assignment.interestedRemark || '',
+    notInterestedRemark: assignment.notInterestedRemark || '',
+    agentNotes: assignment.agentNotes || '',
+    inPipeline: Boolean(assignment.inPipeline),
+    pipelineFollowUpDate: assignment.pipelineFollowUpDate || '',
+    leadContactNumber: assignment.lead?.contactNumber || '',
+    leadName: getLeadDisplayValue(rawData, ['Name', 'name', 'Customer Name', 'CUSTOMER NAME', 'Customer']),
+    companyName: getLeadDisplayValue(rawData, ['Company', 'company', 'Company Name', 'COMPANY']),
+    rawData,
+  };
+};
+
+const buildAdvancedReportDetails = (assignments, rangeInfo) => {
+  const inScopeAssignments = assignments.filter((assignment) => isAssignmentInReportRange(assignment, rangeInfo));
+  const statusMap = new Map();
+  const remarkMap = new Map();
+  const detailRows = inScopeAssignments
+    .filter(hasReportInteraction)
+    .map(buildReportAssignmentDetail);
+
+  for (const assignment of inScopeAssignments) {
+    const status = getAssignmentReportStatus(assignment);
+    if (!statusMap.has(status)) {
+      statusMap.set(status, {
+        status,
+        total: 0,
+        calls: 0,
+        connected: 0,
+        reachable: 0,
+        submitted: 0,
+        activated: 0,
+        pipelineOpen: 0,
+      });
+    }
+
+    const row = statusMap.get(status);
+    row.total += 1;
+    if (hasReportInteraction(assignment)) row.calls += 1;
+    if (isReportDateInRange(assignment.callAttempt1Date, rangeInfo) || isReportDateInRange(assignment.callAttempt2Date, rangeInfo)) row.connected += 1;
+    if (assignment.contactabilityStatus === 'Reachable' && isReportDateInRange(assignment.updatedAt, rangeInfo)) row.reachable += 1;
+    if (assignment.status === 'submitted' && isReportDateInRange(assignment.submittedAt || assignment.updatedAt, rangeInfo)) row.submitted += 1;
+    if (assignment.status === 'activated' && isReportDateInRange(assignment.activatedAt || assignment.updatedAt, rangeInfo)) row.activated += 1;
+    if (assignment.inPipeline && !['submitted', 'activated', 'completed'].includes(String(assignment.status || '').toLowerCase())) row.pipelineOpen += 1;
+
+    for (const remark of [assignment.callingRemark, assignment.interestedRemark, assignment.notInterestedRemark].filter(Boolean)) {
+      remarkMap.set(remark, (remarkMap.get(remark) || 0) + 1);
+    }
+  }
+
+  return {
+    inScopeAssignments,
+    statusBreakdown: Array.from(statusMap.values()).sort((left, right) => right.calls - left.calls || right.total - left.total),
+    remarkBreakdown: Array.from(remarkMap.entries())
+      .map(([remark, count]) => ({ remark, count }))
+      .sort((left, right) => right.count - left.count),
+    detailRows,
+  };
+};
+
 const getAdvancedReportScope = async ({ query }) => {
   const rangeInfo = resolveDateRange(query);
   const { teamId = 'all', agentId = 'all', importBatchId = '', product = '' } = query;
@@ -319,9 +458,9 @@ const getAdvancedReportScope = async ({ query }) => {
 
   const assignments = await LeadAssignment.find(assignmentFilters)
     .select(
-      'agent lead product status createdAt updatedAt submittedAt activatedAt workedDates inPipeline pipelineFollowUpDate contactabilityStatus callingRemark interestedRemark notInterestedRemark agentNotes assignedAgentName callAttempt1Date callAttempt2Date'
+      'agent lead product status createdAt updatedAt submittedAt activatedAt workedDates inPipeline pipelineFollowUpDate pipelineDisplayName pipelineDisplayContact pipelineNotes contactabilityStatus callingRemark interestedRemark notInterestedRemark agentNotes assignedAgentName callAttempt1Date callAttempt2Date'
     )
-    .populate('agent', 'fullName assignedTeam profilePhoto')
+    .populate('agent', 'fullName email assignedTeam profilePhoto')
     .populate('lead')
     .sort({ updatedAt: -1, createdAt: -1 })
     .lean();
@@ -2376,28 +2515,129 @@ export const getAdvancedReportData = asyncHandler(async (req, res) => {
     rangeInfo: scope.rangeInfo,
     includeTeamComparison: true,
   });
+  const reportDetails = buildAdvancedReportDetails(scope.assignments, scope.rangeInfo);
 
-  const detailedLogs = scope.assignments
-    .filter((assignment) => {
-      const hasInteraction =
-        assignment.contactabilityStatus ||
-        assignment.callingRemark ||
-        assignment.interestedRemark ||
-        assignment.notInterestedRemark ||
-        assignment.agentNotes ||
-        assignment.callAttempt1Date ||
-        assignment.callAttempt2Date ||
-        assignment.status;
-      return Boolean(hasInteraction);
-    })
-    .slice(0, 50);
+  const detailedLogs = reportDetails.detailRows.slice(0, 200);
 
   res.status(200).json({
     success: true,
     report: {
       ...analytics,
       filter: scope.filter,
+      statusBreakdown: reportDetails.statusBreakdown,
+      remarkBreakdown: reportDetails.remarkBreakdown,
       detailedLogs,
+    },
+  });
+});
+
+export const getAdvancedUserReport = asyncHandler(async (req, res) => {
+  if (![ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN, ROLES.MANAGER].includes(req.user.role)) {
+    res.status(403);
+    throw new Error('Forbidden');
+  }
+
+  const { userId } = req.params;
+  const scope = await getAdvancedReportScope({ query: { ...req.query, agentId: userId } });
+  
+  if (!scope.agents.length) {
+    res.status(404);
+    throw new Error('User not found or outside scope');
+  }
+
+  const analytics = buildDashboardAnalytics({
+    agents: scope.agents,
+    assignments: scope.assignments,
+    rangeInfo: scope.rangeInfo,
+    includeTeamComparison: false,
+  });
+
+  const reportDetails = buildAdvancedReportDetails(scope.assignments, scope.rangeInfo);
+
+  const datasetBreakdown = {};
+  for (const log of reportDetails.detailRows) {
+    const batchId = log.rawData?._batchId || log.batchName || 'unassigned';
+    if (!datasetBreakdown[batchId]) {
+      datasetBreakdown[batchId] = {
+        batchId,
+        batchName: log.batchName || 'Unassigned Batch',
+        product: log.product || 'general',
+        logs: [],
+        summary: { calls: 0, connected: 0, reachable: 0, submitted: 0, activated: 0 }
+      };
+    }
+    datasetBreakdown[batchId].logs.push(log);
+    datasetBreakdown[batchId].summary.calls += 1;
+    if (log.callAttempt1Date || log.callAttempt2Date) datasetBreakdown[batchId].summary.connected += 1;
+    if (log.contactabilityStatus === 'Reachable') datasetBreakdown[batchId].summary.reachable += 1;
+    if (log.status === 'submitted') datasetBreakdown[batchId].summary.submitted += 1;
+    if (log.status === 'activated') datasetBreakdown[batchId].summary.activated += 1;
+  }
+
+  res.status(200).json({
+    success: true,
+    report: {
+      user: analytics.agentTable[0] || null,
+      kpis: analytics.kpis,
+      funnel: {
+        assigned: analytics.agentTable[0]?.totalAssignedLeads || 0,
+        dialed: analytics.agentTable[0]?.dials || 0,
+        connected: analytics.agentTable[0]?.connectCallCount || 0,
+        reachable: analytics.agentTable[0]?.reachableCount || 0,
+        submitted: analytics.agentTable[0]?.submissions || 0,
+        activated: analytics.agentTable[0]?.activations || 0,
+      },
+      datasetBreakdown: Object.values(datasetBreakdown)
+    },
+  });
+});
+
+export const getAdvancedBatchReport = asyncHandler(async (req, res) => {
+  if (![ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN, ROLES.MANAGER].includes(req.user.role)) {
+    res.status(403);
+    throw new Error('Forbidden');
+  }
+
+  const { batchId } = req.params;
+  const scope = await getAdvancedReportScope({ query: { ...req.query, importBatchId: batchId } });
+
+  const batchInfo = await LeadImport.findById(batchId).select('batchName product totalRows duplicateCount').lean();
+  if (!batchInfo && batchId !== 'unassigned') {
+    res.status(404);
+    throw new Error('Dataset not found');
+  }
+
+  const analytics = buildDashboardAnalytics({
+    agents: scope.agents,
+    assignments: scope.assignments,
+    rangeInfo: scope.rangeInfo,
+    includeTeamComparison: false,
+  });
+
+  const reportDetails = buildAdvancedReportDetails(scope.assignments, scope.rangeInfo);
+
+  res.status(200).json({
+    success: true,
+    report: {
+      dataset: {
+        batchId,
+        batchName: batchInfo?.batchName || 'Unassigned Batch',
+        product: batchInfo?.product || 'general',
+        totalRows: batchInfo?.totalRows || scope.assignments.length,
+        duplicateCount: batchInfo?.duplicateCount || 0,
+      },
+      kpis: analytics.kpis,
+      funnel: {
+        assigned: scope.assignments.length,
+        dialed: analytics.summary.dials,
+        connected: analytics.summary.connectCallCount,
+        reachable: analytics.summary.reachableCount,
+        submitted: analytics.summary.submissions,
+        activated: analytics.summary.activations,
+      },
+      agentDistribution: analytics.agentTable.filter(a => a.totalAssignedLeads > 0),
+      detailedLogs: reportDetails.detailRows,
+      statusBreakdown: reportDetails.statusBreakdown,
     },
   });
 });
@@ -2415,6 +2655,7 @@ export const exportAdvancedReportDetail = asyncHandler(async (req, res) => {
     rangeInfo: scope.rangeInfo,
     includeTeamComparison: true,
   });
+  const reportDetails = buildAdvancedReportDetails(scope.assignments, scope.rangeInfo);
 
   const summaryRows = analytics.kpis.map((kpi) => ({
     Metric: kpi.title,
@@ -2445,10 +2686,47 @@ export const exportAdvancedReportDetail = asyncHandler(async (req, res) => {
     LastActivity: row.lastActivity || '',
   }));
 
+  const statusRows = reportDetails.statusBreakdown.map((row) => ({
+    Status: row.status,
+    TotalRows: row.total,
+    Calls: row.calls,
+    Connected: row.connected,
+    Reachable: row.reachable,
+    Submitted: row.submitted,
+    Activated: row.activated,
+    OpenPipeline: row.pipelineOpen,
+  }));
+
+  const detailRows = reportDetails.detailRows.map((row) => ({
+    Date: row.updatedAt || row.createdAt || '',
+    Agent: row.agentName,
+    AgentEmail: row.agentEmail,
+    Team: row.teamName,
+    Batch: row.batchName,
+    Product: row.product,
+    LeadName: row.leadName,
+    Company: row.companyName,
+    ContactNumber: row.leadContactNumber,
+    ReportStatus: row.reportStatus,
+    CRMStatus: row.status,
+    Contactability: row.contactabilityStatus,
+    CallAttempt1Date: row.callAttempt1Date,
+    CallAttempt2Date: row.callAttempt2Date,
+    CallingRemark: row.callingRemark,
+    InterestedRemark: row.interestedRemark,
+    NotInterestedRemark: row.notInterestedRemark,
+    AgentNotes: row.agentNotes,
+    InPipeline: row.inPipeline ? 'Yes' : 'No',
+    PipelineFollowUpDate: row.pipelineFollowUpDate,
+    RawData: JSON.stringify(row.rawData || {}),
+  }));
+
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(summaryRows), 'Summary');
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(trendRows), 'Trends');
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(agentRows), 'Agents');
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(statusRows), 'Status Calls');
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(detailRows), 'Call Details');
 
   const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
   res.setHeader(

@@ -7,6 +7,14 @@ import { ROLES } from '../constants/roles.js';
 
 const usersToSeed = [
   {
+    fullName: 'Developer User',
+    email: process.env.DEVELOPER_EMAIL || 'developer@example.com',
+    password: process.env.DEVELOPER_PASSWORD || 'password123',
+    role: ROLES.DEVELOPER,
+    isActive: true,
+    isBlocked: false,
+  },
+  {
     fullName: 'Super Admin User',
     email: 'superadmin@example.com',
     password: 'password123', // Will be hashed by pre-save middleware

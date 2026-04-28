@@ -9,6 +9,8 @@ import {
   getAnalystLeadSelection,
   getAnalystPerformanceOverview,
   getAdvancedReportData,
+  getAdvancedUserReport,
+  getAdvancedBatchReport,
   getSavedReports,
   getManagedAgentBatchView,
   getManagedAgentDashboardView,
@@ -42,6 +44,8 @@ router.get('/metadata', authorizeRoles(ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN, RO
 router.get('/analyst/batches', authorizeRoles(ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN), getAnalystBatches);
 router.get('/analyst/overview', authorizeRoles(ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN), getAnalystPerformanceOverview);
 router.get('/analyst/reports', authorizeRoles(ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN, ROLES.MANAGER), getAdvancedReportData);
+router.get('/analyst/reports/users/:userId', authorizeRoles(ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN, ROLES.MANAGER), getAdvancedUserReport);
+router.get('/analyst/reports/batches/:batchId', authorizeRoles(ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN, ROLES.MANAGER), getAdvancedBatchReport);
 router.get('/analyst/reports/export', authorizeRoles(ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN, ROLES.MANAGER), exportAdvancedReportDetail);
 router.get('/analyst/export', authorizeRoles(ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN), exportAnalystLeads);
 router.get('/analyst/selection', authorizeRoles(ROLES.DATA_ANALYST, ROLES.SUPER_ADMIN), getAnalystLeadSelection);

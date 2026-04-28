@@ -96,6 +96,16 @@ export const fetchAdvancedReports = async (params) => {
   return response.data;
 };
 
+export const fetchAdvancedUserReport = async (userId, params) => {
+  const response = await axiosPrivate.get(`/leads/analyst/reports/users/${userId}`, { params });
+  return response.data;
+};
+
+export const fetchAdvancedBatchReport = async (batchId, params) => {
+  const response = await axiosPrivate.get(`/leads/analyst/reports/batches/${batchId}`, { params });
+  return response.data;
+};
+
 export const downloadAdvancedReportExport = async (params) => {
   const response = await axiosPrivate.get('/leads/analyst/reports/export', {
     params,

@@ -8,6 +8,7 @@ import authRoutes from './routes/authRoutes.js';
 import leadRoutes from './routes/leadRoutes.js';
 import userRoutes from './routes/userRoutes.js';
 import userManagementRoutes from './routes/userManagementRoutes.js';
+import developerRoutes from './routes/developerRoutes.js';
 
 const app = express();
 
@@ -69,6 +70,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/leads', leadRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/users', userManagementRoutes);
+app.use('/api/dev', developerRoutes);
 
 // Error Handling Middleware
 app.use(notFound);

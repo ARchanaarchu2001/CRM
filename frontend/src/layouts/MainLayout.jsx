@@ -65,6 +65,9 @@ const MainLayout = () => {
     case 'super_admin':
       return 'Admin';
 
+    case 'developer':
+      return 'Developer';
+
     case 'data_analyst':
       return 'Analyst'; // 👈 or 'Data Analyst' if you prefer
 
@@ -83,6 +86,14 @@ const MainLayout = () => {
 };
 
 const firstName = getDisplayName();
+
+    if (role === 'developer') {
+      return {
+        title: `${getGreeting()}${firstName ? `, ${firstName}` : ''}`,
+        subtitle: 'Monitor system health, data flow, assignments, and secured exports.',
+        badge: 'Developer',
+      };
+    }
 
     switch (role) {
      case 'super_admin':
@@ -140,7 +151,7 @@ const firstName = getDisplayName();
             ? '/analyst-dash'
             : '/dashboard',
       label: 'Home',
-      show: true,
+      show: role !== 'developer',
     },
     { to: '/admin-dash', label: 'Admin Dashboard', show: false },
 

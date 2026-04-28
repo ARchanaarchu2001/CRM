@@ -3,6 +3,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 import { loginUser, fetchMe, clearError } from '../features/auth/authSlice.js';
 import { FiEye, FiEyeOff } from 'react-icons/fi';
+import { DEVELOPER_DASHBOARD_PATH } from '../api/developer.js';
 
 const LoginPage = () => {
   const [email, setEmail] = useState('');
@@ -23,7 +24,9 @@ const LoginPage = () => {
         .then((userData) => {
           // Future scalable role-based redirect placeholder logic
           const userRole = userData?.user?.role || role;
-          if (userRole === 'super_admin') {
+          if (userRole === 'developer') {
+            navigate(`/${DEVELOPER_DASHBOARD_PATH}`);
+          } else if (userRole === 'super_admin') {
             navigate('/admin-dash');
           } else if (userRole === 'data_analyst') {
             navigate('/analyst-dash');
