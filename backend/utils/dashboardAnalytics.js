@@ -489,12 +489,11 @@ export const buildDashboardAnalytics = ({ agents, assignments, rangeInfo, includ
       updateLastActivity(agentMetrics, assignment.updatedAt || assignment.pipelineFollowUpDate);
     }
 
-    // Dataset aggregation
     const batchId = assignment.importBatch ? String(assignment.importBatch) : 'unassigned';
     if (!datasetMap.has(batchId)) {
       datasetMap.set(batchId, {
         batchId,
-        batchName: assignment.batchName || 'Unassigned Batch',
+        batchName: assignment.batchName || (batchId === 'unassigned' ? 'Unassigned Batch' : `Dataset ${batchId.slice(-6)}`),
         product: assignment.product || 'general',
         totalAssignedLeads: 0,
         dials: 0,
@@ -505,6 +504,11 @@ export const buildDashboardAnalytics = ({ agents, assignments, rangeInfo, includ
     }
     
     const datasetRow = datasetMap.get(batchId);
+    // Update name if we have a better one (not "Unassigned Batch")
+    if (assignment.batchName && datasetRow.batchName.includes('Dataset ')) {
+      datasetRow.batchName = assignment.batchName;
+    }
+    
     if (assignedInRange) datasetRow.totalAssignedLeads += 1;
     if (dialedInRange) datasetRow.dials += 1;
     if (submissionDateKey) datasetRow.submissions += 1;

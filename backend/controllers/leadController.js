@@ -2601,7 +2601,12 @@ export const getAdvancedBatchReport = asyncHandler(async (req, res) => {
   const { batchId } = req.params;
   const scope = await getAdvancedReportScope({ query: { ...req.query, importBatchId: batchId } });
 
-  const batchInfo = await LeadImport.findById(batchId).select('batchName product totalRows duplicateCount').lean();
+  let batchInfo = null;
+  // Use regex to check if it's a valid hex ObjectId to avoid CastError
+  if (/^[0-9a-fA-F]{24}$/.test(batchId)) {
+    batchInfo = await LeadImport.findById(batchId).select('batchName product totalRows duplicateCount').lean();
+  }
+
   if (!batchInfo && batchId !== 'unassigned') {
     res.status(404);
     throw new Error('Dataset not found');
@@ -2616,28 +2621,45 @@ export const getAdvancedBatchReport = asyncHandler(async (req, res) => {
 
   const reportDetails = buildAdvancedReportDetails(scope.assignments, scope.rangeInfo);
 
+  const datasetRow = analytics.datasetTable.find(d => d.batchId === batchId) || {
+    batchId,
+    batchName: batchInfo?.batchName || (batchId === 'unassigned' ? 'Unassigned Batch' : 'Unknown Dataset'),
+    product: batchInfo?.product || 'general',
+    totalAssignedLeads: scope.assignments.length,
+    dials: analytics.summary.dials,
+    submissions: analytics.summary.submissions,
+    activations: analytics.summary.activations,
+  };
+
   res.status(200).json({
     success: true,
     report: {
       dataset: {
-        batchId,
-        batchName: batchInfo?.batchName || 'Unassigned Batch',
-        product: batchInfo?.product || 'general',
-        totalRows: batchInfo?.totalRows || scope.assignments.length,
+        ...datasetRow,
+        totalRows: batchInfo?.totalRows || datasetRow.totalAssignedLeads || 0,
         duplicateCount: batchInfo?.duplicateCount || 0,
       },
       kpis: analytics.kpis,
       funnel: {
-        assigned: scope.assignments.length,
-        dialed: analytics.summary.dials,
-        connected: analytics.summary.connectCallCount,
-        reachable: analytics.summary.reachableCount,
-        submitted: analytics.summary.submissions,
-        activated: analytics.summary.activations,
+        assigned: datasetRow.totalAssignedLeads || 0,
+        dialed: datasetRow.dials || 0,
+        connected: analytics.summary.connectCallCount || 0,
+        reachable: analytics.summary.reachableCount || 0,
+        submitted: datasetRow.submissions || 0,
+        activated: datasetRow.activations || 0,
       },
-      agentDistribution: analytics.agentTable.filter(a => a.totalAssignedLeads > 0),
-      detailedLogs: reportDetails.detailRows,
-      statusBreakdown: reportDetails.statusBreakdown,
+      agentDistribution: analytics.agentTable
+        .filter(a => a.totalAssignedLeads > 0 || a.dials > 0)
+        .map(a => ({
+          agentId: a.agentId,
+          agentName: a.agentName,
+          teamName: a.teamName,
+          profilePhoto: a.profilePhoto,
+          totalAssignedLeads: a.totalAssignedLeads || 0,
+          dials: a.dials || 0,
+          submissions: a.submissions || 0,
+        })),
+      statusBreakdown: reportDetails.statusBreakdown
     },
   });
 });

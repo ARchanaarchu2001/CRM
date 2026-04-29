@@ -15,7 +15,7 @@ const DatasetDrilldownView = ({ report, isLoading }) => {
     );
   }
 
-  if (!report || !report.dataset) {
+  if (!report || !report.dataset || !report.dataset.batchId) {
     return (
       <div className="flex-1 flex items-center justify-center p-8 bg-slate-50/50">
         <div className="text-center text-slate-400">
@@ -81,22 +81,22 @@ const DatasetDrilldownView = ({ report, isLoading }) => {
             <div className="space-y-4">
               {agentDistribution.map(agent => (
                 <div key={agent.agentId} className="flex items-center gap-4 p-4 rounded-2xl border border-slate-100 hover:bg-slate-50 transition-colors">
-                  <img src={agent.profilePhoto || `https://ui-avatars.com/api/?name=${encodeURIComponent(agent.agentName)}`} alt={agent.agentName} className="w-10 h-10 rounded-full object-cover" />
+                  <img src={agent.profilePhoto || `https://ui-avatars.com/api/?name=${encodeURIComponent(agent.agentName || 'User')}`} alt={agent.agentName} className="w-10 h-10 rounded-full object-cover" />
                   <div className="flex-1">
-                    <p className="font-bold text-slate-800">{agent.agentName}</p>
-                    <p className="text-xs text-slate-500">{agent.teamName}</p>
+                    <p className="font-bold text-slate-800">{agent.agentName || 'Unknown Agent'}</p>
+                    <p className="text-xs text-slate-500">{agent.teamName || 'N/A'}</p>
                   </div>
                   <div className="flex gap-4">
                     <div className="text-right">
-                      <p className="text-sm font-bold text-slate-800">{agent.totalAssignedLeads}</p>
+                      <p className="text-sm font-bold text-slate-800">{(agent.totalAssignedLeads || 0).toLocaleString()}</p>
                       <p className="text-[10px] uppercase font-bold text-slate-400">Assigned</p>
                     </div>
                     <div className="text-right">
-                      <p className="text-sm font-bold text-blue-600">{agent.dials}</p>
+                      <p className="text-sm font-bold text-blue-600">{(agent.dials || 0).toLocaleString()}</p>
                       <p className="text-[10px] uppercase font-bold text-slate-400">Dials</p>
                     </div>
                     <div className="text-right">
-                      <p className="text-sm font-bold text-emerald-600">{agent.submissions}</p>
+                      <p className="text-sm font-bold text-emerald-600">{(agent.submissions || 0).toLocaleString()}</p>
                       <p className="text-[10px] uppercase font-bold text-slate-400">Subs</p>
                     </div>
                   </div>

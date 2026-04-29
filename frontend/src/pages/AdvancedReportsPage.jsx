@@ -218,7 +218,11 @@ const AdvancedReportsPage = () => {
           <div className="flex items-center gap-3">
             <div className="bg-slate-100 p-1 rounded-xl flex items-center">
               <button
-                onClick={() => setViewPerspective('user')}
+                onClick={() => {
+                  setViewPerspective('user');
+                  setSelectedBatchId(null);
+                  setBatchReportData(null);
+                }}
                 className={`flex items-center gap-2 px-4 py-2 text-sm font-bold rounded-lg transition-all ${
                   viewPerspective === 'user' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'
                 }`}
@@ -226,7 +230,11 @@ const AdvancedReportsPage = () => {
                 <LuUsers /> User View
               </button>
               <button
-                onClick={() => setViewPerspective('dataset')}
+                onClick={() => {
+                  setViewPerspective('dataset');
+                  setSelectedUserId(null);
+                  setUserReportData(null);
+                }}
                 className={`flex items-center gap-2 px-4 py-2 text-sm font-bold rounded-lg transition-all ${
                   viewPerspective === 'dataset' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'
                 }`}

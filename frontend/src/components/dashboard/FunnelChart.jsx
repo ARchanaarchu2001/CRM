@@ -29,10 +29,10 @@ const FunnelChart = ({ data }) => {
                   
                   <div className="flex flex-col items-center z-10 text-white text-center px-2">
                     <span className="text-lg font-black leading-none mb-1">
-                      {step.value.toLocaleString()}
+                      {(step.value || 0).toLocaleString()}
                     </span>
                     <span className="text-[9px] font-bold uppercase tracking-widest opacity-80 leading-tight">
-                      {step.label}
+                      {step.label || ''}
                     </span>
                   </div>
 
