@@ -465,7 +465,7 @@ const getAdvancedReportScope = async ({ query }) => {
 
   const assignments = await LeadAssignment.find(assignmentFilters)
     .select(
-      'agent lead product status createdAt updatedAt submittedAt activatedAt workedDates inPipeline pipelineFollowUpDate pipelineDisplayName pipelineDisplayContact pipelineNotes contactabilityStatus callingRemark interestedRemark notInterestedRemark agentNotes assignedAgentName callAttempt1Date callAttempt2Date'
+      'agent lead importBatch batchName product status createdAt updatedAt submittedAt activatedAt workedDates inPipeline pipelineFollowUpDate pipelineDisplayName pipelineDisplayContact pipelineNotes contactabilityStatus callingRemark interestedRemark notInterestedRemark agentNotes assignedAgentName callAttempt1Date callAttempt2Date'
     )
     .populate('agent', 'fullName email assignedTeam profilePhoto')
     .populate('lead')
