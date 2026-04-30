@@ -155,11 +155,20 @@ const AdvancedReportsPage = () => {
   const handleExport = async () => {
     setIsExporting(true);
     try {
+      let exportAgentId = filter.agentId;
+      let exportBatchId = filter.importBatchId;
+
+      if (viewPerspective === 'user' && selectedUserId) {
+        exportAgentId = selectedUserId;
+      } else if (viewPerspective === 'dataset' && selectedBatchId) {
+        exportBatchId = selectedBatchId;
+      }
+
       const params = {
         ...buildDashboardParams(filter),
         teamId: filter.teamId,
-        agentId: filter.agentId,
-        importBatchId: filter.importBatchId,
+        agentId: exportAgentId,
+        importBatchId: exportBatchId,
         product: filter.product,
       };
       

@@ -449,8 +449,15 @@ const getAdvancedReportScope = async ({ query }) => {
   }
 
   const assignmentFilters = { agent: { $in: scopedAgentIds } };
-  if (importBatchId) {
-    assignmentFilters.importBatch = importBatchId;
+  if (importBatchId && importBatchId !== 'all') {
+    if (importBatchId === 'unassigned') {
+      assignmentFilters.$or = [
+        { importBatch: null },
+        { importBatch: { $exists: false } }
+      ];
+    } else {
+      assignmentFilters.importBatch = importBatchId;
+    }
   }
   if (product) {
     assignmentFilters.product = String(product).toLowerCase();
@@ -2695,14 +2702,15 @@ export const exportAdvancedReportDetail = asyncHandler(async (req, res) => {
   const agentRows = (analytics.agentTable || []).map((row) => ({
     Agent: row.agentName,
     Team: row.teamName,
+    TotalAssignedLeads: row.totalAssignedLeads,
+    PendingLeads: row.pendingLeads,
     Dials: row.dials,
     ConnectCalls: row.connectCallCount || 0,
+    'Connectivity %': row.dials > 0 ? ((row.connectCallCount / row.dials) * 100).toFixed(1) + '%' : '0%',
     Submissions: row.submissions,
     Activations: row.activations,
     Pipeline: row.pipelineCount,
     OverduePipeline: row.overduePipelineCount,
-    PendingLeads: row.pendingLeads,
-    TotalAssignedLeads: row.totalAssignedLeads,
     LastActivity: row.lastActivity || '',
   }));
 
@@ -2717,7 +2725,6 @@ export const exportAdvancedReportDetail = asyncHandler(async (req, res) => {
   }));
 
   const detailRows = reportDetails.detailRows.map((row) => ({
-    Date: row.updatedAt || row.createdAt || '',
     Agent: row.agentName,
     AgentEmail: row.agentEmail,
     Team: row.teamName,
@@ -2737,7 +2744,6 @@ export const exportAdvancedReportDetail = asyncHandler(async (req, res) => {
     AgentNotes: row.agentNotes,
     InPipeline: row.inPipeline ? 'Yes' : 'No',
     PipelineFollowUpDate: row.pipelineFollowUpDate,
-    RawData: JSON.stringify(row.rawData || {}),
   }));
 
   const isAgentSelected = req.query.agentId && req.query.agentId !== 'all';
@@ -2746,13 +2752,17 @@ export const exportAdvancedReportDetail = asyncHandler(async (req, res) => {
 
   const workbook = XLSX.utils.book_new();
   
-  if (isSpecificSelection) {
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(agentRows), 'Agents Data');
+  if (isDatasetSelected) {
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(summaryRows), 'Batch Overview');
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(agentRows), 'Agent Wise');
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(detailRows), 'Call Details');
+  } else if (isAgentSelected) {
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(agentRows), 'Agent Data');
     XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(detailRows), 'Call Details');
   } else {
     XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(summaryRows), 'Summary');
     XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(trendRows), 'Trends');
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(agentRows), 'Agents Data');
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(agentRows), 'Agent Wise');
     XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(statusRows), 'Status Calls');
     XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(detailRows), 'Call Details');
   }
