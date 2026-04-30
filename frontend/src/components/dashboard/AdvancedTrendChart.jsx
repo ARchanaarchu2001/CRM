@@ -21,13 +21,11 @@ const AdvancedTrendChart = ({ data = [], title, description }) => {
   const totals = useMemo(() => data.reduce((acc, row) => ({
     dials: acc.dials + Number(row.dials || 0),
     connectCallCount: acc.connectCallCount + Number(row.connectCallCount || 0),
-    reachableCount: acc.reachableCount + Number(row.reachableCount || 0),
     submissions: acc.submissions + Number(row.submissions || 0),
     activations: acc.activations + Number(row.activations || 0),
   }), {
     dials: 0,
     connectCallCount: 0,
-    reachableCount: 0,
     submissions: 0,
     activations: 0,
   }), [data]);
@@ -35,7 +33,6 @@ const AdvancedTrendChart = ({ data = [], title, description }) => {
   const metrics = [
     { key: 'dials', label: 'Dials', color: '#4f46e5' },
     { key: 'connectCallCount', label: 'Connected', color: '#2563eb' },
-    { key: 'reachableCount', label: 'Reachable', color: '#0f766e' },
     { key: 'submissions', label: 'Submissions', color: '#059669' },
   ];
 
@@ -48,9 +45,6 @@ const AdvancedTrendChart = ({ data = [], title, description }) => {
 
   const connectRate = selectedNode?.dials > 0
     ? ((selectedNode.connectCallCount || 0) / selectedNode.dials) * 100
-    : 0;
-  const reachableRate = selectedNode?.connectCallCount > 0
-    ? ((selectedNode.reachableCount || 0) / selectedNode.connectCallCount) * 100
     : 0;
 
   return (
@@ -145,14 +139,10 @@ const AdvancedTrendChart = ({ data = [], title, description }) => {
               <span className="text-sm font-extrabold text-slate-950">{formatMetricValue(selectedNode?.activations)}</span>
             </div>
           </div>
-          <div className="mt-5 grid grid-cols-2 gap-3">
+          <div className="mt-5 grid grid-cols-1 gap-3">
             <div className="rounded-xl bg-white p-3 ring-1 ring-slate-200">
               <p className="text-[11px] font-bold uppercase text-slate-400">Connect Rate</p>
               <p className="mt-1 text-lg font-extrabold text-blue-700">{connectRate.toFixed(1)}%</p>
-            </div>
-            <div className="rounded-xl bg-white p-3 ring-1 ring-slate-200">
-              <p className="text-[11px] font-bold uppercase text-slate-400">Reachable Rate</p>
-              <p className="mt-1 text-lg font-extrabold text-teal-700">{reachableRate.toFixed(1)}%</p>
             </div>
           </div>
         </aside>

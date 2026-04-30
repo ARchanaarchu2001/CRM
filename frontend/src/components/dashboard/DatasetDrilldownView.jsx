@@ -32,7 +32,6 @@ const DatasetDrilldownView = ({ report, isLoading }) => {
     { label: 'Assigned Leads', value: funnel.assigned, color: '#94a3b8' },
     { label: 'Dialed', value: funnel.dialed, color: '#3b82f6' },
     { label: 'Connected', value: funnel.connected, color: '#06b6d4' },
-    { label: 'Reachable', value: funnel.reachable, color: '#10b981' },
     { label: 'Submitted', value: funnel.submitted, color: '#6366f1' },
     { label: 'Activated', value: funnel.activated, color: '#8b5cf6' },
   ];

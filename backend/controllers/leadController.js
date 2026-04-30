@@ -2688,7 +2688,6 @@ export const exportAdvancedReportDetail = asyncHandler(async (req, res) => {
     Date: row.label,
     Dials: row.dials,
     ConnectCalls: row.connectCallCount || 0,
-    Reachable: row.reachableCount || 0,
     Submissions: row.submissions,
     Activations: row.activations,
   }));
@@ -2698,7 +2697,6 @@ export const exportAdvancedReportDetail = asyncHandler(async (req, res) => {
     Team: row.teamName,
     Dials: row.dials,
     ConnectCalls: row.connectCallCount || 0,
-    Reachable: row.reachableCount || 0,
     Submissions: row.submissions,
     Activations: row.activations,
     Pipeline: row.pipelineCount,
@@ -2713,7 +2711,6 @@ export const exportAdvancedReportDetail = asyncHandler(async (req, res) => {
     TotalRows: row.total,
     Calls: row.calls,
     Connected: row.connected,
-    Reachable: row.reachable,
     Submitted: row.submitted,
     Activated: row.activated,
     OpenPipeline: row.pipelineOpen,
@@ -2743,12 +2740,22 @@ export const exportAdvancedReportDetail = asyncHandler(async (req, res) => {
     RawData: JSON.stringify(row.rawData || {}),
   }));
 
+  const isAgentSelected = req.query.agentId && req.query.agentId !== 'all';
+  const isDatasetSelected = req.query.importBatchId && req.query.importBatchId !== 'all';
+  const isSpecificSelection = isAgentSelected || isDatasetSelected;
+
   const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(summaryRows), 'Summary');
-  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(trendRows), 'Trends');
-  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(agentRows), 'Agents');
-  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(statusRows), 'Status Calls');
-  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(detailRows), 'Call Details');
+  
+  if (isSpecificSelection) {
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(agentRows), 'Agents Data');
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(detailRows), 'Call Details');
+  } else {
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(summaryRows), 'Summary');
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(trendRows), 'Trends');
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(agentRows), 'Agents Data');
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(statusRows), 'Status Calls');
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(detailRows), 'Call Details');
+  }
 
   const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
   res.setHeader(

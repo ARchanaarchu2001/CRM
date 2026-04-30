@@ -17,7 +17,6 @@ const ReportStatusBreakdown = ({ data = [], remarks = [] }) => {
                 <th className="px-5 py-4 text-right">Rows</th>
                 <th className="px-5 py-4 text-right">Calls</th>
                 <th className="px-5 py-4 text-right">Connected</th>
-                <th className="px-5 py-4 text-right">Reachable</th>
                 <th className="px-5 py-4 text-right">Submitted</th>
                 <th className="px-5 py-4 text-right">Activated</th>
                 <th className="px-5 py-4 text-right">Open</th>
@@ -30,7 +29,6 @@ const ReportStatusBreakdown = ({ data = [], remarks = [] }) => {
                   <td className="px-5 py-4 text-right">{formatMetricValue(row.total)}</td>
                   <td className="px-5 py-4 text-right font-bold text-slate-900">{formatMetricValue(row.calls)}</td>
                   <td className="px-5 py-4 text-right text-blue-700">{formatMetricValue(row.connected)}</td>
-                  <td className="px-5 py-4 text-right text-teal-700">{formatMetricValue(row.reachable)}</td>
                   <td className="px-5 py-4 text-right text-indigo-700">{formatMetricValue(row.submitted)}</td>
                   <td className="px-5 py-4 text-right text-emerald-700">{formatMetricValue(row.activated)}</td>
                   <td className="px-5 py-4 text-right text-amber-700">{formatMetricValue(row.pipelineOpen)}</td>

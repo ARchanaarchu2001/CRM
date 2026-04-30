@@ -32,7 +32,6 @@ const UserDrilldownView = ({ report, isLoading }) => {
     { label: 'Assigned Leads', value: funnel.assigned, color: '#94a3b8' },
     { label: 'Dialed', value: funnel.dialed, color: '#3b82f6' },
     { label: 'Connected', value: funnel.connected, color: '#06b6d4' },
-    { label: 'Reachable', value: funnel.reachable, color: '#10b981' },
     { label: 'Submitted', value: funnel.submitted, color: '#6366f1' },
     { label: 'Activated', value: funnel.activated, color: '#8b5cf6' },
   ];
@@ -41,7 +40,6 @@ const UserDrilldownView = ({ report, isLoading }) => {
     { label: 'Total Assigned', value: user.totalAssignedLeads, icon: LuDatabase, color: 'text-slate-500', bg: 'bg-slate-50' },
     { label: 'Total Dials', value: user.dials, icon: LuPhone, color: 'text-blue-500', bg: 'bg-blue-50' },
     { label: 'Connected Calls', value: user.connectCallCount, icon: LuPhoneCall, color: 'text-cyan-500', bg: 'bg-cyan-50' },
-    { label: 'Reachable', value: user.reachableCount, icon: LuUserCheck, color: 'text-emerald-500', bg: 'bg-emerald-50' },
     { label: 'Submissions', value: user.submissions, icon: LuFileText, color: 'text-indigo-500', bg: 'bg-indigo-50' },
     { label: 'Activations', value: user.activations, icon: LuCheck, color: 'text-violet-500', bg: 'bg-violet-50' },
   ];
