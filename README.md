@@ -1,77 +1,102 @@
-# MERN Role-Based Authentication System
+# LeadSync CRM
 
-A comprehensive, production-ready MERN stack authentication system featuring secure JWT handling, HttpOnly refresh cookies, Redux Toolkit state management, and hierarchical Role-Based Access Control (RBAC).
+A production-grade, role-based lead distribution and analytics platform built with the MERN stack. Designed to manage high-volume lead pipelines across large agent teams with real-time updates and optimised performance.
 
-## Features
-- **JWT Authentication**: Short-lived Access Tokens for speed, long-lived Refresh Tokens for UX.
-- **Secure Storage**: Refresh tokens are stored strictly in `HttpOnly`, `SameSite` cookies to prevent XSS and CSRF.
-- **Role-Based Access Control (RBAC)**: Hierarchical routing (`SUPER_ADMIN`, `DATA_ANALYST`, `TEAM_LEAD`, `MANAGER`, `AGENT`).
-- **Axios Interceptors**: Completely automated background token refreshing using silent interceptors.
-- **State Management**: Redux Toolkit slices and async thunks powering React UI hooks.
-- **Tailwind UI**: Modern, responsive login and protected dashboard scaffolding.
+> Built as an internal tool at TSPL Corp — serving 100+ agents across 8,500+ leads.
 
-## 1. Installation
+---
 
-### Backend Setup
-Navigate to the backend directory and install the packages.
-```bash
-cd backend
-npm install
+## 🚀 Performance Highlights
+
+- ⚡ Redis caching reduced API response times by **94%** (1.21s → 78ms)
+- 📋 Lead assignment time reduced from **hours to seconds**
+- 📦 MongoDB aggregation pipelines optimised for **initial load under 2 seconds**
+- 📁 Bulk CSV/XLSX import supporting **8,500+ lead datasets**
+
+---
+
+## 📸 Screenshots
+
+### Agent Dashboard — Performance Overview
+![Agent Dashboard](./crmagent.webp)
+
+### Agent Dashboard — Dataset Management
+![Dataset View](./agentdialed.webp)
+
+### Agent Dashboard — Lead Sheet
+![Lead Sheet](./agenttable.png)
+
+### Analyst Dashboard — Team Performance Overview
+![Analyst Dashboard](./analyst-overview.webp)
+
+---
+
+## ✨ Features
+
+- **Automated Lead Distribution** — role-based engine that assigns leads instantly based on agent availability and role
+- **5 Role-Based Dashboards** — Super Admin, Manager, Team Lead, Data Analyst, Agent — each with scoped access and relevant views
+- **Real-Time Updates** — Socket.io integration for live lead status changes and notifications across all dashboards
+- **Redis Caching** — role-aware TTL strategy to serve repeated queries near-instantly
+- **Bulk Import** — CSV/XLSX upload via Multer for mass lead ingestion
+- **Pipeline Analytics** — Recharts-powered visual dashboards for conversion tracking and team performance
+- **JWT Authentication** — secure login with role-based middleware protecting all routes
+
+---
+
+## 🛠 Tech Stack
+
+| Layer | Technology |
+|-------|------------|
+| Frontend | React.js, Redux Toolkit, Tailwind CSS, Recharts |
+| Backend | Node.js, Express.js |
+| Database | MongoDB, Mongoose |
+| Caching | Redis, ioredis, Socket.IO Redis Adapter |
+| Real-Time | Socket.io |
+| File Handling | Multer (CSV/XLSX import) |
+| Auth | JWT, Role-Based Middleware |
+
+---
+
+## 🏗 Architecture Overview
+
+```
+client/
+├── src/
+│   ├── components/        # Reusable UI components
+│   ├── pages/             # Role-based dashboard pages
+│   ├── store/             # Redux Toolkit slices
+│   └── socket/            # Socket.io client setup
+
+server/
+├── controllers/           # Route handlers
+├── middleware/            # Auth + role guards
+├── models/                # Mongoose schemas
+├── routes/                # Express route definitions
+├── services/              # Lead distribution engine
+└── utils/                 # Redis cache helpers
 ```
 
-### Frontend Setup
-Navigate to the frontend directory and install the packages.
-```bash
-cd frontend
-npm install
-```
+---
 
-## 2. Environment Variables (.env)
+## 👥 Roles & Access
 
-**Create `backend/.env`:**
-```env
-PORT=5000
-NODE_ENV=development
-MONGO_URI=mongodb://localhost:27017/mern_auth_db
-JWT_SECRET=your_super_secret_jwt_key
-JWT_EXPIRES_IN=15m
-REFRESH_TOKEN_SECRET=your_super_secret_refresh_key
-REFRESH_TOKEN_EXPIRES_IN=7d
-FRONTEND_URL=http://localhost:5173
-```
+| Role | Access |
+|------|--------|
+| Super Admin | Full system access, agent management, all analytics |
+| Manager | Team overview, lead pipeline, performance reports |
+| Team Lead | Team leads tracking, lead reassignment |
+| Data Analyst | Analytics dashboards, CSV import, reporting |
+| Agent | Personal lead list, status updates, targets |
 
-**Create `frontend/.env`:**
-```env
-VITE_API_URL=http://localhost:5000/api
-```
+---
 
-## 3. Database Seeding
-To initialize the database with the core testing roles, ensure MongoDB is running locally and execute:
-```bash
-cd backend
-node seeders/seedUsers.js
-```
-*(This will safely generate 5 hierarchical accounts like `superadmin@example.com`, `manager@example.com`, etc. with the default password `password123`)*
+## 👨‍💻 Contributors
 
-## 4. Running the Project
+- **Lufna Nasrin** — Backend architecture, Redis caching, lead distribution engine, real-time system, frontend dashboards
+- **Archana** — Frontend components, UI implementation
 
-**Start the Backend Server:**
-```bash
-cd backend
-npm run dev
-```
+---
 
-**Start the Vite Frontend:**
-```bash
-cd frontend
-npm run dev
-```
+## 📄 License
 
-## 5. Architecture & Authentication Flow
-1. **Initial Login**: The React UI dispatches the `loginUser` slice. Express validates the credentials against `bcrypt` databases. If successful, it generates two tokens:
-   - `accessToken`: Sent in the JSON payload and saved to Redux `auth.accessToken`.
-   - `refreshToken`: Locked inside an `HttpOnly` cookie safely attached to the client browser.
-2. **Accessing Routes**: Frontend components automatically retrieve the Redux `accessToken` when executing fetches, and Axios securely injects it into every outbound API header (`Authorization: Bearer <token>`).
-3. **Silent Automated Refresh**: When the 15-minute `accessToken` ultimately expires, Express throws a `401 Unauthorized` block. The Axios Response Interceptor catches this, freezes the failed request, and quietly pings `/api/auth/refresh-token`. Express reads the secure `HttpOnly` cookie, rotates it in the database safely, and issues a fresh `accessToken`. Axios automatically maps this to Redux and seamlessly retries the original request without disrupting the UI UX!
-4. **Session Persistence**: On hard page reloads where Redux wipes, React's `<PersistLogin />` component natively queries the refresh endpoint in the background before rendering the DOM layout, pulling the active session securely back to life.
-5. **Logout Integration**: Pressing logout commands the Express server to nullify the refresh token strictly inside the database and wipe the cookie from the browser, gracefully kicking the user back to the login screen.
+This project was built as an internal production tool. Code is shared for portfolio purposes.
